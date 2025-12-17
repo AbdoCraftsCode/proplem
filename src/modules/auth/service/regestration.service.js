@@ -885,22 +885,447 @@ export const resetPassword = asyncHandelr(async (req, res, next) => {
 
 
 
+import cron from 'node-cron';
 
 
 
 
+cron.schedule('0 * * * *', async () => {
+    console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية...');
+
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const result = await Usermodel.updateMany(
+        {
+            lastUsernameUpdate: { $lte: twentyFourHoursAgo },
+            username: { $ne: null } // فقط اللي عندهم اسم حاليًا
+        },
+        {
+            $set: { username: null },
+            $unset: { lastUsernameUpdate: "" } // اختياري: حذف التاريخ
+        }
+    );
+
+    console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين)`);
+});
+
+
+
+export const updateUserProfile = asyncHandelr(async (req, res) => {
+    const { username, ImageId } = req.body;
+
+    // التأكد من وجود المستخدم من التوكن (افترض أنك تستخدم middleware auth)
+    const user = req.user; // يأتي من middleware مثل protect
+
+    if (!user) {
+        return res.status(401).json({
+            message: "❌ غير مصرح لك",
+        });
+    }
+
+    // تحديث الحقول إذا تم إرسالها
+    if (username !== undefined) {
+        // يمكنك إضافة شروط مثل: لا يسمح بأسماء فارغة، أو تحقق من التكرار (اختياري)
+        if (username.trim() === '') {
+            return res.status(400).json({
+                message: "❌ اسم المستخدم لا يمكن أن يكون فارغًا",
+            });
+        }
+
+        user.username = username.trim();
+        user.lastUsernameUpdate = new Date(); // تسجيل وقت التحديث
+    }
+
+    if (ImageId !== undefined) {
+        // التأكد من أن ImageId صالح (اختياري: تحقق من وجوده في CartoonImage)
+        user.ImageId = ImageId || null;
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+        message: "✅ تم تحديث الملف الشخصي بنجاح",
+        data: {
+            _id: user._id,
+            username: user.username,
+            ImageId: user.ImageId,
+            email: user.email,
+            phone: user.phone,
+            // أي بيانات أخرى تريدها
+        }
+    });
+});
 
 
 
 
+export const createPost = asyncHandelr(async (req, res) => {
+    const { text } = req.body;
+
+    if (!text || text.trim() === '') {
+        return res.status(400).json({ message: "❌ النص مطلوب" });
+    }
+
+    const post = await Posttt.create({
+        text: text.trim(),
+        user: req.user._id,
+        status: "pending" // افتراضي
+    });
+
+    res.status(201).json({
+        message: "✅ تم إنشاء البوست بنجاح (في انتظار الموافقة)",
+        data: post
+    });
+});
 
 
+export const addComment = asyncHandelr(async (req, res) => {
+    const { text } = req.body;
+    const { postId } = req.params;
+
+    if (!text || text.trim() === '') {
+        return res.status(400).json({ message: "❌ نص التعليق مطلوب" });
+    }
+
+    const post = await Posttt.findById(postId);
+    if (!post) {
+        return res.status(404).json({ message: "❌ البوست غير موجود" });
+    }
+
+    // إنشاء الكومنت (رئيسي → parentComment = null)
+    const comment = await Commenttt.create({
+        text: text.trim(),
+        user: req.user._id,
+        parentComment: null
+    });
+
+    // إضافته للبوست
+    post.comments.push(comment._id);
+    await post.save();
+
+    await comment.populate('user', 'username ImageId'); // اختياري: جلب بيانات اليوزر
+
+    res.status(201).json({
+        message: "✅ تم إضافة التعليق بنجاح",
+        data: comment
+    });
+});
+
+export const reactToPost = asyncHandelr(async (req, res) => {
+    const { type } = req.body;
+    const { postId } = req.params;
+
+    if (!["like", "love", "sad", "angry"].includes(type)) {
+        return res.status(400).json({ message: "❌ نوع الـ reaction غير صالح" });
+    }
+
+    const post = await Posttt.findById(postId);
+    if (!post) {
+        return res.status(404).json({ message: "❌ البوست غير موجود" });
+    }
+
+    // البحث عن reaction موجود من نفس المستخدم ونفس النوع
+    const existingReactionIndex = post.reactions.findIndex(
+        r => r.user.toString() === req.user._id.toString() && r.type === type
+    );
+
+    // لو موجود → نحذفه (إلغاء الـ reaction)
+    if (existingReactionIndex !== -1) {
+        post.reactions.splice(existingReactionIndex, 1);
+        await post.save();
+        return res.json({ message: "❌ تم إلغاء الـ reaction" });
+    }
+
+    // لو مش موجود من نفس النوع → نزيل أي reaction قديم من نفس المستخدم (للسماح بتغيير النوع فقط)
+    post.reactions = post.reactions.filter(
+        r => r.user.toString() !== req.user._id.toString()
+    );
+
+    // إضافة الـ reaction الجديد
+    post.reactions.push({
+        user: req.user._id,
+        type
+    });
+
+    await post.save();
+
+    res.json({
+        message: `✅ تم إضافة ${type} بنجاح`,
+        data: { type }
+    });
+});
+export const getMyPosts = asyncHandelr(async (req, res) => {
+    const posts = await Posttt.find({ user: req.user._id })
+        .sort({ createdAt: -1 })
+        .populate('user', 'username ImageId')
+        .populate('reactions.user', 'username ImageId')
+        .populate({
+            path: 'comments',
+            populate: {
+                path: 'user reactions.user',
+                select: 'username ImageId'
+            }
+        })
+        .lean(); // مهم: عشان نقدر نعدل بحرية
+
+    // جمع IDs التعليقات الرئيسية
+    const mainCommentIds = posts
+        .flatMap(p => p.comments || [])
+        .map(c => c._id.toString());
+
+    // جلب كل الردود المتداخلة
+    const allReplies = await Commenttt.find({
+        parentComment: { $in: mainCommentIds }
+    })
+        .populate('user', 'username ImageId')
+        .populate('reactions.user', 'username ImageId')
+        .lean();
+
+    // بناء الشجرة
+    const buildReplies = (parentId) => {
+        return allReplies
+            .filter(r => r.parentComment?.toString() === parentId)
+            .map(r => ({
+                ...r,
+                replies: buildReplies(r._id.toString())
+            }));
+    };
+
+    // إضافة replies للتعليقات الرئيسية
+    posts.forEach(post => {
+        post.comments = (post.comments || []).map(comment => ({
+            ...comment,
+            replies: buildReplies(comment._id.toString())
+        }));
+    });
+
+    // الإحصائيات
+    const formattedPosts = posts.map(post => {
+        const reactionsCount = { like: 0, love: 0, sad: 0, angry: 0, total: post.reactions.length };
+        post.reactions.forEach(r => reactionsCount[r.type]++);
+
+        const countAllComments = (comments) => {
+            return comments.reduce((sum, c) => sum + 1 + countAllComments(c.replies || []), 0);
+        };
+
+        return {
+            ...post,
+            reactionsCount,
+            commentsCount: countAllComments(post.comments || [])
+        };
+    });
+
+    res.json({
+        message: "✅ تم جلب بوستاتك بنجاح",
+        count: formattedPosts.length,
+        data: formattedPosts
+    });
+});
+
+export const getAllPosts = asyncHandelr(async (req, res) => {
+    // دالة مساعدة لحساب reactionsCount
+    const calculateReactionsCount = (reactions = []) => {
+        const count = { like: 0, love: 0, sad: 0, angry: 0, total: reactions.length };
+        reactions.forEach(r => {
+            if (count.hasOwnProperty(r.type)) {
+                count[r.type]++;
+            }
+        });
+        return count;
+    };
+
+    const posts = await Posttt.find({ status: "accepted" })
+        .sort({ createdAt: -1 })
+        // populate صاحب البوست مع صورته الكرتونية
+        .populate({
+            path: 'user',
+            select: 'username ImageId',
+            populate: {
+                path: 'ImageId',
+                select: 'image.secure_url image.public_id'
+            }
+        })
+        // populate reactions البوست مع صور المستخدمين
+        .populate({
+            path: 'reactions.user',
+            select: 'username ImageId',
+            populate: {
+                path: 'ImageId',
+                select: 'image.secure_url image.public_id'
+            }
+        })
+        // populate التعليقات الرئيسية
+        .populate({
+            path: 'comments',
+            populate: [
+                // صاحب الكومنت + صورته
+                {
+                    path: 'user',
+                    select: 'username ImageId',
+                    populate: {
+                        path: 'ImageId',
+                        select: 'image.secure_url image.public_id'
+                    }
+                },
+                // reactions الكومنت + صور أصحابها
+                {
+                    path: 'reactions.user',
+                    select: 'username ImageId',
+                    populate: {
+                        path: 'ImageId',
+                        select: 'image.secure_url image.public_id'
+                    }
+                }
+            ]
+        })
+        .lean();
+
+    // جمع IDs التعليقات الرئيسية
+    const mainCommentIds = posts
+        .flatMap(p => p.comments || [])
+        .map(c => c._id.toString());
+
+    // جلب كل الردود المتداخلة مع populate كامل لليوزر والصور
+    const allReplies = await Commenttt.find({
+        parentComment: { $in: mainCommentIds }
+    })
+        .populate({
+            path: 'user',
+            select: 'username ImageId',
+            populate: {
+                path: 'ImageId',
+                select: 'image.secure_url image.public_id'
+            }
+        })
+        .populate({
+            path: 'reactions.user',
+            select: 'username ImageId',
+            populate: {
+                path: 'ImageId',
+                select: 'image.secure_url image.public_id'
+            }
+        })
+        .lean();
+
+    // بناء الشجرة للردود
+    const buildReplies = (parentId) => {
+        return allReplies
+            .filter(r => r.parentComment?.toString() === parentId)
+            .map(r => ({
+                ...r,
+                reactionsCount: calculateReactionsCount(r.reactions || []),
+                replies: buildReplies(r._id.toString())
+            }));
+    };
+
+    // إضافة replies و reactionsCount للتعليقات الرئيسية
+    posts.forEach(post => {
+        post.comments = (post.comments || []).map(comment => ({
+            ...comment,
+            reactionsCount: calculateReactionsCount(comment.reactions || []),
+            replies: buildReplies(comment._id.toString())
+        }));
+    });
+
+    // تنسيق البوستات النهائي
+    const formattedPosts = posts.map(post => {
+        const reactionsCount = calculateReactionsCount(post.reactions || []);
+
+        const countAllComments = (comments) => {
+            return comments.reduce((sum, c) => sum + 1 + countAllComments(c.replies || []), 0);
+        };
+
+        return {
+            ...post,
+            reactionsCount,
+            commentsCount: countAllComments(post.comments || [])
+        };
+    });
+
+    res.json({
+        message: "✅ تم جلب جميع البوستات بنجاح",
+        count: formattedPosts.length,
+        data: formattedPosts
+    });
+});
+
+export const replyToComment = asyncHandelr(async (req, res) => {
+    const { text } = req.body;
+    const { commentId } = req.params;
+
+    if (!text || text.trim() === '') {
+        return res.status(400).json({ message: "❌ نص الرد مطلوب" });
+    }
+
+    // التأكد من وجود الكومنت الأب
+    const parentComment = await Commenttt.findById(commentId);
+    if (!parentComment) {
+        return res.status(404).json({ message: "❌ الكومنت الأصلي غير موجود" });
+    }
+
+    // إنشاء الرد الجديد مع ربطه بالكومنت الأب
+    const reply = await Commenttt.create({
+        text: text.trim(),
+        user: req.user._id,
+        parentComment: commentId  // هنا الفرق: مش null
+    });
+
+    // Populate بيانات المستخدم في الرد مباشرة
+    await reply.populate('user', 'username ImageId');
+
+    res.status(201).json({
+        message: "✅ تم إضافة الرد بنجاح",
+        data: reply
+    });
+});
 
 
+export const reactToComment = asyncHandelr(async (req, res) => {
+    const { type } = req.body;
+    const { commentId } = req.params;
 
+    if (!["like", "love", "sad", "angry"].includes(type)) {
+        return res.status(400).json({ message: "❌ نوع الـ reaction غير صالح" });
+    }
 
+    const comment = await Commenttt.findById(commentId);
+    if (!comment) {
+        return res.status(404).json({ message: "❌ الكومنت غير موجود" });
+    }
 
+    // البحث عن reaction موجود من نفس المستخدم ونفس النوع
+    const existingReactionIndex = comment.reactions.findIndex(
+        r => r.user.toString() === req.user._id.toString() && r.type === type
+    );
 
+    // لو موجود → إلغاء الـ reaction
+    if (existingReactionIndex !== -1) {
+        comment.reactions.splice(existingReactionIndex, 1);
+        await comment.save();
+        return res.json({
+            message: "❌ تم إلغاء الـ reaction",
+            data: { type }
+        });
+    }
+
+    // إزالة أي reaction قديم من نفس المستخدم (عشان يغير النوع فقط)
+    comment.reactions = comment.reactions.filter(
+        r => r.user.toString() !== req.user._id.toString()
+    );
+
+    // إضافة الـ reaction الجديد
+    comment.reactions.push({
+        user: req.user._id,
+        type
+    });
+
+    await comment.save();
+
+    res.json({
+        message: `✅ تم إضافة ${type} بنجاح`,
+        data: { type }
+    });
+});
 
 
 
@@ -1098,6 +1523,8 @@ export const signupServiceProvider = asyncHandelr(async (req, res, next) => {
 
     return successresponse(res, "تم إنشاء حساب مقدم الخدمة بنجاح، وتم إرسال رمز التحقق", 201);
 });
+
+
 
 
 
@@ -7249,6 +7676,7 @@ import { ImageModel } from "../../../DB/models/imageSchema.model.js";
 import { ReportModel } from "../../../DB/models/reportSchema.js";
 import { verifyOTP } from "./authontecation.service.js";
 import AppSettingsSchema from "../../../DB/models/AppSettingsSchema.js";
+import { Commenttt, Posttt } from "../../../DB/models/reactionSchema.js";
 
 export const updateSubscription = asyncHandelr(async (req, res, next) => {
     const { userId } = req.params;

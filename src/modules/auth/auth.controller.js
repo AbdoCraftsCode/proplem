@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { validation } from "../../middlewere/validation.middlewere.js";
 import  * as validators from "../auth/auth.validate.js"
-import { addAuthorizedUser, addAuthorizedUserToSupermarket, addProduct, addSection, confirmOTP, createAdminUser, createAppointment, createBranch, createDoctor, createEvaluation, createMainGroup, createMode, createOrder, createOrderSupermarket, createPaidService, createPaidServiceDrivers, createPermissions, createProduct, createPropertyBooking, createQuestion, createRentalProperty, createReport, createRestaurant, createService, createSubGroup, createSubscriptionPlan, createSupermarket, createUserByOwner, deleteAdminUser, deleteAppSettings, deleteBranch, deleteDoctor, deleteMainGroup, deletePermission, deleteProduct, deleteProducts, deleteRentalProperty, deleteRestaurant, deleteSection, deleteSingleQuestion, deleteSubGroup, deleteSubscriptionPlan, deleteSupermarket, deleteUserByAdmin, deleteUserByOwner, findNearbyDrivers, forgetPassword, getAcceptedOrders, getAccessibleSupermarket, getAllAdminUsers, getAllImages, getAllNormalUsers, getAllPaidServiceDrivers, getAllPaidServices, getAllPaidServicesadmin, getAllPermissions, getAllRentalProperties, getAllServiceProviders, getAllSubscriptionPlans, getBranches, getClinetHistory, getDeliveredOrdersByDriver, getDoctorAppointments, getDoctors, getDriverHistory, getDriverOrdersStats, getDriverStats, getEvaluations, getMainGroupsForUser, getMainGroupsWithSubGroups, getManagerRestaurants, getMyDoctorProfile, getMyEvaluations, getMyRestaurantsProducts, getMySubGroups, getNotificationsByDoctor, getNotificationsByProperty, getNotificationsByRestaurant, getNotificationsByUser, getOwnerRestaurants, getProductsByRestaurant, getPropertyBookings, getQuestionsByMainGroups, getReports, getRestaurantOrders, getRestaurants, getRideRequestById, getServices, getSubGroupsByMainGroup, getSupermarket, getSupermarketAdmin, getSupermarketNotifications, getSupermarketOrders, getSupermarketSections, getSupermarketWithSectionsAndProducts, getUserOrders, getUserRentalProperties, getUsersByOwner, markAllNotificationsAsRead, markAllNotificationsAsReadDoctor, markAllNotificationsAsReadProperty, registerRestaurant, resetPassword, sendotpphone, signup, signupServiceProvider, signupwithGmail, updateAdminUser, updateBranch, updateDoctor, updateMainGroup, updateMyProfile, updateOrderStatus, updateOrderStatusSupermarket, updatePermission, updateProduct, updateProductsupermarket, updateRentalProperty, updateRestaurant, updateSection, updateService, updateSingleQuestion, updateSubGroup, updateSubscription, updateSubscriptionPlan, updateSupermarket, updateUser, updateUserByOwner, uploadImages,  } from "./service/regestration.service.js";
-import { confirEachOtp, createOrUpdateSettings, deleteMyAccount, forgetpassword,   forgetPasswordphone,   forgetPasswordphoneadmin,   getAppSettingsAdmin,   getMyCompactProfile,   getMyProfile,   getSettings,   login, loginAdmin, loginRestaurant, loginwithGmail, refreshToken, resendOTP, resetpassword, resetPasswordphone, verifyOTP } from "./service/authontecation.service.js";
+import { addAuthorizedUser, addAuthorizedUserToSupermarket, addComment, addProduct, addSection, confirmOTP, createAdminUser, createAppointment, createBranch, createDoctor, createEvaluation, createMainGroup, createMode, createOrder, createOrderSupermarket, createPaidService, createPaidServiceDrivers, createPermissions, createPost, createProduct, createPropertyBooking, createQuestion, createRentalProperty, createReport, createRestaurant, createService, createSubGroup, createSubscriptionPlan, createSupermarket, createUserByOwner, deleteAdminUser, deleteAppSettings, deleteBranch, deleteDoctor, deleteMainGroup, deletePermission, deleteProduct, deleteProducts, deleteRentalProperty, deleteRestaurant, deleteSection, deleteSingleQuestion, deleteSubGroup, deleteSubscriptionPlan, deleteSupermarket, deleteUserByAdmin, deleteUserByOwner, findNearbyDrivers, forgetPassword, getAcceptedOrders, getAccessibleSupermarket, getAllAdminUsers, getAllImages, getAllNormalUsers, getAllPaidServiceDrivers, getAllPaidServices, getAllPaidServicesadmin, getAllPermissions, getAllPosts, getAllRentalProperties, getAllServiceProviders, getAllSubscriptionPlans, getBranches, getClinetHistory, getDeliveredOrdersByDriver, getDoctorAppointments, getDoctors, getDriverHistory, getDriverOrdersStats, getDriverStats, getEvaluations, getMainGroupsForUser, getMainGroupsWithSubGroups, getManagerRestaurants, getMyDoctorProfile, getMyEvaluations, getMyPosts, getMyRestaurantsProducts, getMySubGroups, getNotificationsByDoctor, getNotificationsByProperty, getNotificationsByRestaurant, getNotificationsByUser, getOwnerRestaurants, getProductsByRestaurant, getPropertyBookings, getQuestionsByMainGroups, getReports, getRestaurantOrders, getRestaurants, getRideRequestById, getServices, getSubGroupsByMainGroup, getSupermarket, getSupermarketAdmin, getSupermarketNotifications, getSupermarketOrders, getSupermarketSections, getSupermarketWithSectionsAndProducts, getUserOrders, getUserRentalProperties, getUsersByOwner, markAllNotificationsAsRead, markAllNotificationsAsReadDoctor, markAllNotificationsAsReadProperty, reactToComment, reactToPost, registerRestaurant, replyToComment, resetPassword, sendotpphone, signup, signupServiceProvider, signupwithGmail, updateAdminUser, updateBranch, updateDoctor, updateMainGroup, updateMyProfile, updateOrderStatus, updateOrderStatusSupermarket, updatePermission, updateProduct, updateProductsupermarket, updateRentalProperty, updateRestaurant, updateSection, updateService, updateSingleQuestion, updateSubGroup, updateSubscription, updateSubscriptionPlan, updateSupermarket, updateUser, updateUserByOwner, updateUserProfile, uploadImages,  } from "./service/regestration.service.js";
+import { confirEachOtp, createOrUpdateSettings, deleteMyAccount, forgetpassword,   forgetPasswordphone,   forgetPasswordphoneadmin,   getAllCartoonImages,   getAppSettingsAdmin,   getMyCompactProfile,   getMyProfile,   getSettings,   login, loginAdmin, loginRestaurant, loginwithGmail, refreshToken, resendOTP, resetpassword, resetPasswordphone, uploadCartoonImage, verifyOTP } from "./service/authontecation.service.js";
 import { authentication, checkRestaurantPermission } from "../../middlewere/authontcation.middlewere.js";
 
 const routr = Router()
@@ -29,6 +29,14 @@ routr.post(
     ]),
     createDoctor
 );
+
+
+
+routr.post("/uploadCartoonImage",
+
+    uploadCloudFile(fileValidationTypes.image).single('image')
+    , uploadCartoonImage);
+
 
 
 routr.patch(
@@ -195,7 +203,24 @@ routr.post("/createAppointment", authentication(),createAppointment)
 routr.get("/getRestaurants", getRestaurants)
 routr.get("/getNotificationsByUser/:userId", getNotificationsByUser)
 routr.get("/getReports", getReports)
+
+routr.get("/getAllCartoonImages", getAllCartoonImages)
+
 routr.post("/createReport", createReport)
+routr.post("/updateUserProfile", authentication(), updateUserProfile)
+
+routr.post("/addComment/:postId", authentication(), addComment)
+
+routr.post("/reactToPost/:postId", authentication(), reactToPost)
+
+routr.post("/replyToComment/:commentId", authentication(), replyToComment)
+
+routr.post("/reactToComment/:commentId", authentication(), reactToComment)
+routr.post("/createPost", authentication(), createPost)
+
+routr.get("/getMyPosts", authentication(), getMyPosts)
+routr.get("/getAllPosts",  getAllPosts)
+
 routr.patch("/updateUser/:id", updateUser)
 routr.get("/findNearbyDrivers", findNearbyDrivers)
 routr.get("/getDriverHistory/:driverId", getDriverHistory)

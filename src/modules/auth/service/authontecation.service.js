@@ -16,6 +16,12 @@ import { RestaurantModel } from "../../../DB/models/RestaurantSchema.model.js";
 import AppSettingsSchema from "../../../DB/models/AppSettingsSchema.js";
 import { sendOTP } from "./regestration.service.js";
 const AUTHENTICA_OTP_URL = "https://api.authentica.sa/api/v1/send-otp";
+
+
+import cloud from "../../../utlis/multer/cloudinary.js";
+import { CartoonImageModel } from "../../../DB/models/cartoneImage.js";
+
+
 // export const login = asyncHandelr(async (req, res, next) => {
 //     const { identifier, password } = req.body; // identifier يمكن أن يكون إيميل أو رقم هاتف
 //     console.log(identifier, password);
@@ -366,7 +372,38 @@ export const login = asyncHandelr(async (req, res, next) => {
 
 
 
+export const uploadCartoonImage = asyncHandelr(async (req, res, next) => {
 
+    if (!req.file) {
+        return next(new Error("❌ لم يتم رفع أي صورة", { cause: 400 }));
+    }
+
+    // رفع الصورة إلى Cloudinary
+    const { secure_url, public_id } = await cloud.uploader.upload(req.file.path, {
+        folder: "cartoonImages", // فولدر ثابت
+    });
+
+    // حفظ البيانات في MongoDB
+    const newImage = await CartoonImageModel.create({
+        image: { secure_url, public_id }
+    });
+
+    return res.status(201).json({
+        message: "✅ تم رفع الصورة بنجاح",
+        data: newImage,
+    });
+});
+
+export const getAllCartoonImages = asyncHandelr(async (req, res, next) => {
+
+    const images = await CartoonImageModel.find().sort({ createdAt: -1 });
+
+    return res.status(200).json({
+        success: true,
+        count: images.length,
+        data: images
+    });
+});
 
 
 
@@ -524,6 +561,8 @@ export const forgetpassword = asyncHandelr(async (req, res, next) => {
 
     return successresponse(res);
 });
+
+
 
 
 

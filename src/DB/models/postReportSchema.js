@@ -29,13 +29,13 @@ const postReportSchema = new mongoose.Schema(
                 "copyright",         // انتهاك حقوق نشر
                 "other"              // أخرى
             ],
-            required: true,
+            // required: true,
         },
 
         // رسالة البلاغ (تفاصيل إضافية من المستخدم)
         message: {
             type: String,
-            required: true,
+            // required: true,
             trim: true,
             minlength: 10,
             maxlength: 500,

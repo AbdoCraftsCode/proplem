@@ -1526,23 +1526,311 @@ export const signupServiceProvider = asyncHandelr(async (req, res, next) => {
 
 
 
+export const updatePostStatus = asyncHandelr(async (req, res) => {
+    const { postId } = req.params;
+    const { status } = req.body; // "accepted" أو "rejected"
+
+    // التحقق من الحالة الصالحة
+    if (!["accepted", "rejected"].includes(status)) {
+        return res.status(400).json({
+            message: "❌ الحالة غير صالحة. يجب أن تكون 'accepted' أو 'rejected'"
+        });
+    }
+
+    // البحث عن البوست
+    const post = await Posttt.findById(postId)
+        .populate('user', 'username ImageId');
+
+    if (!post) {
+        return res.status(404).json({
+            message: "❌ البوست غير موجود"
+        });
+    }
+
+    // التحقق من صلاحية الأدمن (افترض إن عندك role في اليوزر)
+    // if (req.user.role !== "Admin" && req.user.role !== "Owner") {
+    //     return res.status(403).json({
+    //         message: "❌ غير مصرح لك بتغيير حالة البوست"
+    //     });
+    // }
+
+    // تحديث الحالة
+    post.status = status;
+    await post.save();
+
+    // رسالة نجاح مخصصة
+    const action = status === "accepted" ? "تم قبول" : "تم رفض";
+    res.status(200).json({
+        message: `✅ ${action} البوست بنجاح`,
+        post: {
+            _id: post._id,
+            text: post.text,
+            status: post.status,
+            user: post.user,
+            createdAt: post.createdAt
+        }
+    });
+});
+
+
+
+
+
+export const createPostReport = asyncHandelr(async (req, res) => {
+    const { postId } = req.params;
+    const { reportType, message } = req.body;
+    const reportedBy = req.user._id;
+
+    // التحقق من وجود البوست
+    const post = await Posttt.findById(postId);
+    if (!post) {
+        return res.status(404).json({ message: "❌ البوست غير موجود" });
+    }
+
+    // التحقق من الأنواع والرسالة
+    const validTypes = ["spam", "inappropriate", "harassment", "violence", "hate_speech", "false_information", "copyright", "other"];
+    if (!validTypes.includes(reportType)) {
+        return res.status(400).json({ message: "❌ نوع البلاغ غير صالح" });
+    }
+
+    if (!message || message.trim().length < 10) {
+        return res.status(400).json({ message: "❌ الرسالة مطلوبة ويجب أن تكون 10 أحرف على الأقل" });
+    }
+
+    // منع بلاغ مكرر من نفس المستخدم على نفس البوست
+    const existingReport = await PostReport.findOne({ postId, reportedBy });
+    if (existingReport) {
+        return res.status(400).json({ message: "❌ لقد قمت بالإبلاغ عن هذا البوست من قبل" });
+    }
+
+    const report = await PostReport.create({
+        postId,
+        reportedBy,
+        reportType,
+        message: message.trim(),
+    });
+
+    await report.populate([
+        { path: 'postId', select: 'text status' },
+        { path: 'reportedBy', select: 'username ImageId' }
+    ]);
+
+    res.status(201).json({
+        message: "✅ تم إرسال البلاغ بنجاح، سيتم مراجعته قريبًا",
+        report
+    });
+});
 
 
 
 
 
 
+// @desc    مراجعة بلاغ وتحديث حالته
+// @route   PUT /api/reports/:reportId/review
+// @access  Private (Admin)
+export const reviewReport = asyncHandelr(async (req, res) => {
+    const { reportId } = req.params;
+    const { status, adminNote } = req.body; // status: "reviewed", "resolved", "dismissed"
+
+    // التحقق من صلاحية الأدمن
+    // if (req.user.role !== "Admin" && req.user.role !== "Owner") {
+    //     return res.status(403).json({ message: "❌ غير مصرح لك بمراجعة البلاغات" });
+    // }
+
+    const validStatuses = ["reviewed", "resolved", "dismissed"];
+    if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: "❌ الحالة غير صالحة" });
+    }
+
+    const report = await PostReport.findById(reportId)
+        .populate('postId', 'text')
+        .populate('reportedBy', 'username');
+
+    if (!report) {
+        return res.status(404).json({ message: "❌ البلاغ غير موجود" });
+    }
+
+    report.status = status;
+    report.adminNote = adminNote?.trim() || null;
+    report.reviewedBy = req.user._id;
+    report.updatedAt = new Date();
+
+    await report.save();
+
+    res.status(200).json({
+        message: `✅ تم تحديث حالة البلاغ إلى "${status}" بنجاح`,
+        report
+    });
+});
 
 
 
+export const getAllReports = asyncHandelr(async (req, res) => {
+    // // التحقق من صلاحية الأدمن
+    // if (req.user.role !== "Admin" && req.user.role !== "Owner") {
+    //     return res.status(403).json({
+    //         message: "❌ غير مصرح لك برؤية جميع البلاغات"
+    //     });
+    // }
+
+    // جلب كل البلاغات مرتبة من الأحدث للأقدم
+    const reports = await PostReport.find({})
+        .sort({ createdAt: -1 })
+        .populate([
+            { path: 'postId', select: 'text status user' },
+            { path: 'reportedBy', select: 'username ImageId' },
+            { path: 'reviewedBy', select: 'username' }
+        ]);
+
+    // إحصائيات سريعة (اختياري، مفيدة للأدمن)
+    const stats = {
+        total: reports.length,
+        pending: reports.filter(r => r.status === "pending").length,
+        reviewed: reports.filter(r => r.status === "reviewed").length,
+        resolved: reports.filter(r => r.status === "resolved").length,
+        dismissed: reports.filter(r => r.status === "dismissed").length,
+    };
+
+    res.status(200).json({
+        message: reports.length
+            ? "✅ تم جلب جميع البلاغات بنجاح"
+            : "📭 لا توجد بلاغات في النظام حاليًا",
+        count: reports.length,
+        stats,
+        reports
+    });
+});
+
+
+export const searchUserByEmail = asyncHandelr(async (req, res) => {
+    const { email } = req.body;
+
+    // التحقق من صلاحية الأدمن
+    // if (req.user.role !== "Admin" && req.user.role !== "Owner") {
+    //     return res.status(403).json({ message: "❌ غير مصرح لك بالبحث عن المستخدمين" });
+    // }
+
+    if (!email || typeof email !== "string" || !email.includes('@')) {
+        return res.status(400).json({ message: "❌ يرجى إدخال إيميل صالح" });
+    }
+
+    const user = await Usermodel.findOne({ email: email.trim().toLowerCase() })
+        .select('username email role phone ImageId createdAt isOnline');
+
+    if (!user) {
+        return res.status(404).json({ message: "📭 لا يوجد مستخدم بهذا الإيميل" });
+    }
+
+    res.status(200).json({
+        message: "✅ تم العثور على المستخدم بنجاح",
+        user
+    });
+});
 
 
 
+export const updateUserRole = asyncHandelr(async (req, res) => {
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    // التحقق من صلاحية الأدمن
+    // if (req.user.role !== "Admin" && req.user.role !== "Owner") {
+    //     return res.status(403).json({ message: "❌ غير مصرح لك بتغيير أدوار المستخدمين" });
+    // }
+
+    // قائمة الأدوار المسموحة (عدلها حسب احتياجك)
+    const validRoles = ["User", "Admin", "Owner", "ServiceProvider", "manager", "staff"];
+    if (!validRoles.includes(role)) {
+        return res.status(400).json({
+            message: "❌ الدور غير صالح",
+            validRoles
+        });
+    }
+
+    const user = await Usermodel.findById(userId).select('username email role');
+
+    if (!user) {
+        return res.status(404).json({ message: "❌ المستخدم غير موجود" });
+    }
+
+    // اختياري: منع تغيير دور Owner إلا لـ Owner آخر
+    // if (user.role === "Owner" && req.user.role !== "Owner") {
+    //     return res.status(403).json({ message: "❌ لا يمكن تغيير دور المالك" });
+    // }
+
+    user.role = role;
+    await user.save();
+
+    res.status(200).json({
+        message: `✅ تم تغيير دور المستخدم إلى "${role}" بنجاح`,
+        user: {
+            _id: user._id,
+            username: user.username || null,
+            email: user.email,
+            role: user.role
+        }
+    });
+});
 
 
 
+export const deleteUser = asyncHandelr(async (req, res) => {
+    const { userId } = req.params;
+
+    // التحقق من صلاحية الأدمن أو المالك
+    // if (req.user.role !== "Admin" && req.user.role !== "Owner") {
+    //     return res.status(403).json({
+    //         message: "❌ غير مصرح لك بحذف المستخدمين"
+    //     });
+    // }
+
+    const userToDelete = await Usermodel.findById(userId);
+
+    if (!userToDelete) {
+        return res.status(404).json({ message: "❌ المستخدم غير موجود" });
+    }
+
+    // منع حذف Owner إلا بواسطة Owner آخر
+    // if (userToDelete.role === "Owner" && req.user.role !== "Owner") {
+    //     return res.status(403).json({
+    //         message: "❌ لا يمكن حذف حساب المالك إلا بواسطة مالك آخر"
+    //     });
+    // }
+
+    // منع حذف نفسك
+    if (userToDelete._id.toString() === req.user._id.toString()) {
+        return res.status(400).json({
+            message: "❌ لا يمكنك حذف حسابك الخاص"
+        });
+    }
+
+    // حذف المستخدم نهائيًا
+    await User.findByIdAndDelete(userId);
+
+    res.status(200).json({
+        message: `✅ تم حذف المستخدم "${userToDelete.username}" بنجاح`,
+        deletedUserId: userId
+    });
+});
 
 
+
+export const getAllAdmins = asyncHandelr(async (req, res) => {
+
+
+    const admins = await Usermodel.find({ role: "Admin" })
+        .select('username email phone role createdAt isOnline ImageId')
+        .sort({ createdAt: -1 });
+
+    res.status(200).json({
+        message: admins.length
+            ? "✅ تم جلب قائمة الأدمن بنجاح"
+            : "📭 لا يوجد أدمن حاليًا غيرك",
+        count: admins.length,
+        admins
+    });
+});
 
 export const updateUser = asyncHandelr(async (req, res, next) => {
     const { id } = req.params; // 👈 بنجيب ال id من الرابط
@@ -7677,6 +7965,7 @@ import { ReportModel } from "../../../DB/models/reportSchema.js";
 import { verifyOTP } from "./authontecation.service.js";
 import AppSettingsSchema from "../../../DB/models/AppSettingsSchema.js";
 import { Commenttt, Posttt } from "../../../DB/models/reactionSchema.js";
+import { PostReport } from "../../../DB/models/postReportSchema.js";
 
 export const updateSubscription = asyncHandelr(async (req, res, next) => {
     const { userId } = req.params;

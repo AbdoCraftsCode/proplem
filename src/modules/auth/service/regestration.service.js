@@ -957,7 +957,65 @@ export const updateUserProfile = asyncHandelr(async (req, res) => {
 });
 
 
+export const getUserProfile = asyncHandelr(async (req, res) => {
+    const user = req.user; // يأتي من middleware protect
 
+    if (!user) {
+        return res.status(401).json({ message: "❌ غير مصرح لك" });
+    }
+
+    // حساب الوقت المتبقي للاسم (لو موجود)
+    let usernameExpiryInfo = null;
+
+    if (user.lastUsernameUpdate && user.username) {
+        const lastUpdate = new Date(user.lastUsernameUpdate);
+        const now = new Date();
+        const hoursPassed = (now - lastUpdate) / (1000 * 60 * 60); // بالساعات
+        const hoursLeft = 24 - hoursPassed;
+
+        if (hoursLeft > 0) {
+            const fullHours = Math.floor(hoursLeft);
+            const minutes = Math.round((hoursLeft - fullHours) * 60);
+
+            usernameExpiryInfo = {
+                lastUpdatedAt: user.lastUsernameUpdate,
+                expiresIn: `${fullHours} ساعة و ${minutes} دقيقة`,
+                hoursLeft: Math.round(hoursLeft * 100) / 100, // بدقة عشرية
+                status: "active"
+            };
+        } else {
+            // لو مر أكثر من 24 ساعة
+            usernameExpiryInfo = {
+                lastUpdatedAt: user.lastUsernameUpdate,
+                expiresIn: "انتهت الصلاحية",
+                hoursLeft: 0,
+                status: "expired"
+            };
+        }
+    }
+
+    // populate الصورة الكرتونية لو موجودة
+    await user.populate({
+        path: 'ImageId',
+        select: 'image.secure_url image.public_id'
+    });
+
+    res.status(200).json({
+        message: "✅ تم جلب بيانات الملف الشخصي بنجاح",
+        profile: {
+            _id: user._id,
+            username: user.username || null,
+            email: user.email,
+            phone: user.phone,
+            role: user.role,
+            ImageId: user.ImageId,
+            isOnline: user.isOnline,
+            createdAt: user.createdAt,
+            // معلومات الاسم المؤقت
+            usernameExpiry: usernameExpiryInfo
+        }
+    });
+});
 
 export const createPost = asyncHandelr(async (req, res) => {
     const { text } = req.body;

@@ -1249,6 +1249,43 @@ export const getAllPosts = asyncHandelr(async (req, res) => {
     });
 });
 
+
+// controllers/postController.js
+
+
+// @desc    جلب البوستات اللي حالتها pending فقط (بيانات بسيطة بدون كومنتات أو لايكات)
+// @route   GET /api/posts/pending
+// @access  Private (Admin) أو Public لو عايز، لكن موصى بـ Admin
+export const getPendingPosts = asyncHandelr(async (req, res) => {
+    // اختياري: تحقق من صلاحية الأدمن
+    // if (req.user.role !== "Admin" && req.user.role !== "Owner") {
+    //     return res.status(403).json({ message: "❌ غير مصرح لك" });
+    // }
+
+    const pendingPosts = await Posttt.find({ status: "pending" })
+        .sort({ createdAt: -1 }) // الأحدث أولاً
+        .populate({
+            path: 'user',
+            select: 'username ImageId',
+            populate: {
+                path: 'ImageId',
+                select: 'image.secure_url image.public_id'
+            }
+        })
+        .select('text status createdAt user') // فقط الحقول اللي عايزها
+        .lean(); // للأداء
+
+    res.status(200).json({
+        message: pendingPosts.length
+            ? "✅ تم جلب البوستات المعلقة بنجاح"
+            : "📭 لا توجد بوستات في انتظار الموافقة حاليًا",
+        count: pendingPosts.length,
+        data: pendingPosts
+    });
+});
+
+
+
 export const replyToComment = asyncHandelr(async (req, res) => {
     const { text } = req.body;
     const { commentId } = req.params;

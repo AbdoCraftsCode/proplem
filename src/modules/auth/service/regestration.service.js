@@ -1055,7 +1055,10 @@ export const reactToPost = asyncHandelr(async (req, res) => {
     });
 });
 export const getMyPosts = asyncHandelr(async (req, res) => {
-    const posts = await Posttt.find({ user: req.user._id })
+    const posts = await Posttt.find({
+        user: req.user._id,
+        status: "accepted"  // ← الإضافة الجديدة
+    })
         .sort({ createdAt: -1 })
         .populate('user', 'username ImageId')
         .populate('reactions.user', 'username ImageId')

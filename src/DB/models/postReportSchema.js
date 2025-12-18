@@ -41,7 +41,7 @@ const postReportSchema = new mongoose.Schema(
             maxlength: 500,
         },
 
-        // حالة البلاغ (للأدمن)
+
         status: {
             type: String,
             enum: ["pending", "reviewed", "resolved", "dismissed"],

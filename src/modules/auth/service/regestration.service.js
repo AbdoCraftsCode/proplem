@@ -1762,7 +1762,38 @@ export const reviewReport = asyncHandelr(async (req, res) => {
     });
 });
 
+export const deletePost = asyncHandelr(async (req, res) => {
+    const { postId } = req.params;
+    const userId = req.user._id;
+    const userRole = req.user.role;
 
+    const post = await Posttt.findById(postId);
+
+    if (!post) {
+        return res.status(404).json({ message: "❌ البوست غير موجود" });
+    }
+
+    // التحقق من الصلاحيات
+    // const isOwner = post.user.toString() === userId.toString();
+    // const isAdmin = userRole === "Admin" || userRole === "Owner";
+
+    // if (!isOwner && !isAdmin) {
+    //     return res.status(403).json({
+    //         message: "❌ غير مصرح لك بحذف هذا البوست"
+    //     });
+    // }
+
+    // حذف الكومنتات المرتبطة بالبوست (اختياري، موصى بيه)
+    await Commenttt.deleteMany({ postId });
+
+    // حذف البوست نفسه
+    await Posttt.findByIdAndDelete(postId);
+
+    res.status(200).json({
+        message: "✅ تم حذف البوست بنجاح",
+        deletedPostId: postId
+    });
+});
 
 export const getAllReports = asyncHandelr(async (req, res) => {
     // // التحقق من صلاحية الأدمن

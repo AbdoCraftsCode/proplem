@@ -56,7 +56,7 @@ export const providerTypes = { system: "system", google: "google" };
 
 const userSchema = new Schema({
     username: { type: String },
-    role: { type: String,  },
+    role: { type: String, default: 'User' },
     email: { type: String, },
     phone: { type: String,  sparse: true, trim: true },
 

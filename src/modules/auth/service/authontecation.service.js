@@ -1186,44 +1186,61 @@ export const loginwithGmail = asyncHandelr(async (req, res, next) => {
         return next(new Error("Email not verified", { cause: 403 }));
     }
 
-
     let user = await dbservice.findOne({
         model: Usermodel,
         filter: { email },
     });
 
-    if (user?.provider === providerTypes.system) {
-        return next(new Error("Invalid account. Please login using your email/password", { cause: 403 }));
-    }
-
-
-    if (!user) {
-        let userId;
-        let isUnique = false;
-        while (!isUnique) {
-            userId = Math.floor(1000000 + Math.random() * 9000000);
-            const existingUser = await dbservice.findOne({
-                model: Usermodel,
-                filter: { userId },
-            });
-            if (!existingUser) isUnique = true;
+    // ✅ الإضافة الجديدة: لو الحساب موجود (سواء جوجل أو عادي)، رجع isExisting: true
+    if (user) {
+        // لو كان حساب عادي (system)، منعه من تسجيل الدخول بجوجل
+        if (user.provider === providerTypes.system) {
+            return next(new Error("Invalid account. Please login using your email/password", { cause: 403 }));
         }
 
-        user = await dbservice.create({
-            model: Usermodel,
-            data: {
-                email,
-                username: name,
-                profilePic: { secure_url: picture },
-                isConfirmed: email_verified,
-                provider: providerTypes.google,
-                userId, // ✅ Add generated userId here
-                gender: "Male", // لو تقدر تجيبه من جوجل أو تخليه undefined
-            },
+        // لو كان حساب جوجل موجود بالفعل → سجل دخول عادي
+        const access_Token = generatetoken({
+            payload: { id: user._id, country: user.country },
+        });
+
+        const refreshToken = generatetoken({
+            payload: { id: user._id },
+            expiresIn: "365d"
+        });
+
+        return successresponse(res, "Done", 200, {
+            access_Token,
+            refreshToken,
+            user,
+            isExisting: true  // ← يعرف الـ frontend إن الحساب موجود من قبل
         });
     }
 
-    // Step 4: Generate tokens
+    // لو مش موجود → إنشاء حساب جديد
+    let userId;
+    let isUnique = false;
+    while (!isUnique) {
+        userId = Math.floor(1000000 + Math.random() * 9000000);
+        const existingUser = await dbservice.findOne({
+            model: Usermodel,
+            filter: { userId },
+        });
+        if (!existingUser) isUnique = true;
+    }
+
+    user = await dbservice.create({
+        model: Usermodel,
+        data: {
+            email,
+            username: name,
+            profilePic: { secure_url: picture },
+            isConfirmed: email_verified,
+            provider: providerTypes.google,
+            userId,
+            gender: "Male",
+        },
+    });
+
     const access_Token = generatetoken({
         payload: { id: user._id, country: user.country },
     });
@@ -1233,8 +1250,29 @@ export const loginwithGmail = asyncHandelr(async (req, res, next) => {
         expiresIn: "365d"
     });
 
-    return successresponse(res, "Done", 200, { access_Token, refreshToken, user });
+    return successresponse(res, "Done", 201, {
+        access_Token,
+        refreshToken,
+        user,
+        isExisting: false  // حساب جديد
+    });
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
  
 
 export const deleteMyAccount = async (req, res) => {

@@ -1679,7 +1679,7 @@ export const createPostReport = asyncHandelr(async (req, res) => {
     const { reportType, message } = req.body;
     const reportedBy = req.user._id;
 
-    // التحقق من وجود البوست
+   
     const post = await Posttt.findById(postId);
     if (!post) {
         return res.status(404).json({ message: "❌ البوست غير موجود" });

@@ -37,7 +37,7 @@ const postReportSchema = new mongoose.Schema(
             type: String,
             // required: true,
             trim: true,
-            minlength: 10,
+            // minlength: 10,
             maxlength: 500,
         },
 

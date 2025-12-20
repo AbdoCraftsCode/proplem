@@ -1386,12 +1386,101 @@ export const GetMyNotifications = asyncHandelr(async (req, res) => {
     });
 });
 
+// export const getMyPosts = asyncHandelr(async (req, res) => {
+//     const posts = await Posttt.find({
+//         user: req.user._id,
+//         status: "accepted"  // ← الإضافة الجديدة
+//     })
+//         .sort({ createdAt: -1 })
+//         .populate('user', 'username ImageId')
+//         .populate('reactions.user', 'username ImageId')
+//         .populate({
+//             path: 'comments',
+//             populate: {
+//                 path: 'user reactions.user',
+//                 select: 'username ImageId'
+//             }
+//         })
+//         .lean(); // مهم: عشان نقدر نعدل بحرية
+
+//     // جمع IDs التعليقات الرئيسية
+//     const mainCommentIds = posts
+//         .flatMap(p => p.comments || [])
+//         .map(c => c._id.toString());
+
+//     // جلب كل الردود المتداخلة
+//     const allReplies = await Commenttt.find({
+//         parentComment: { $in: mainCommentIds }
+//     })
+//         .populate('user', 'username ImageId')
+//         .populate('reactions.user', 'username ImageId')
+//         .lean();
+
+//     // بناء الشجرة
+//     const buildReplies = (parentId) => {
+//         return allReplies
+//             .filter(r => r.parentComment?.toString() === parentId)
+//             .map(r => ({
+//                 ...r,
+//                 replies: buildReplies(r._id.toString())
+//             }));
+//     };
+
+//     // إضافة replies للتعليقات الرئيسية
+//     posts.forEach(post => {
+//         post.comments = (post.comments || []).map(comment => ({
+//             ...comment,
+//             replies: buildReplies(comment._id.toString())
+//         }));
+//     });
+
+//     // الإحصائيات
+//     const formattedPosts = posts.map(post => {
+//         const reactionsCount = { like: 0, love: 0, sad: 0, angry: 0, total: post.reactions.length };
+//         post.reactions.forEach(r => reactionsCount[r.type]++);
+
+//         const countAllComments = (comments) => {
+//             return comments.reduce((sum, c) => sum + 1 + countAllComments(c.replies || []), 0);
+//         };
+
+//         return {
+//             ...post,
+//             reactionsCount,
+//             commentsCount: countAllComments(post.comments || [])
+//         };
+//     });
+
+//     res.json({
+//         message: "✅ تم جلب بوستاتك بنجاح",
+//         count: formattedPosts.length,
+//         data: formattedPosts
+//     });
+// });
+
+
+
+
+
+
 export const getMyPosts = asyncHandelr(async (req, res) => {
+    // ✅ إضافة Pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // جلب عدد البوستات الكلي للمستخدم (للـ pagination info)
+    const totalPosts = await Posttt.countDocuments({
+        user: req.user._id,
+        status: "accepted"
+    });
+
     const posts = await Posttt.find({
         user: req.user._id,
-        status: "accepted"  // ← الإضافة الجديدة
+        status: "accepted"
     })
         .sort({ createdAt: -1 })
+        .skip(skip)        // ← جديد: تخطي البوستات السابقة
+        .limit(limit)      // ← جديد: حد أقصى لعدد البوستات في الصفحة
         .populate('user', 'username ImageId')
         .populate('reactions.user', 'username ImageId')
         .populate({
@@ -1401,7 +1490,7 @@ export const getMyPosts = asyncHandelr(async (req, res) => {
                 select: 'username ImageId'
             }
         })
-        .lean(); // مهم: عشان نقدر نعدل بحرية
+        .lean();
 
     // جمع IDs التعليقات الرئيسية
     const mainCommentIds = posts
@@ -1450,12 +1539,159 @@ export const getMyPosts = asyncHandelr(async (req, res) => {
         };
     });
 
+    // ✅ معلومات الـ Pagination في الـ response
+    const totalPages = Math.ceil(totalPosts / limit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
     res.json({
         message: "✅ تم جلب بوستاتك بنجاح",
         count: formattedPosts.length,
+        totalPosts,
+        pagination: {
+            currentPage: page,
+            totalPages,
+            hasNextPage,
+            hasPrevPage,
+            limit
+        },
         data: formattedPosts
     });
 });
+
+
+
+
+
+
+// export const getAllPosts = asyncHandelr(async (req, res) => {
+//     // دالة مساعدة لحساب reactionsCount
+//     const calculateReactionsCount = (reactions = []) => {
+//         const count = { like: 0, love: 0, sad: 0, angry: 0, total: reactions.length };
+//         reactions.forEach(r => {
+//             if (count.hasOwnProperty(r.type)) {
+//                 count[r.type]++;
+//             }
+//         });
+//         return count;
+//     };
+
+//     const posts = await Posttt.find({ status: "accepted" })
+//         .sort({ createdAt: -1 })
+//         // populate صاحب البوست مع صورته الكرتونية
+//         .populate({
+//             path: 'user',
+//             select: 'username ImageId',
+//             populate: {
+//                 path: 'ImageId',
+//                 select: 'image.secure_url image.public_id'
+//             }
+//         })
+//         // populate reactions البوست مع صور المستخدمين
+//         .populate({
+//             path: 'reactions.user',
+//             select: 'username ImageId',
+//             populate: {
+//                 path: 'ImageId',
+//                 select: 'image.secure_url image.public_id'
+//             }
+//         })
+//         // populate التعليقات الرئيسية
+//         .populate({
+//             path: 'comments',
+//             populate: [
+//                 // صاحب الكومنت + صورته
+//                 {
+//                     path: 'user',
+//                     select: 'username ImageId',
+//                     populate: {
+//                         path: 'ImageId',
+//                         select: 'image.secure_url image.public_id'
+//                     }
+//                 },
+//                 // reactions الكومنت + صور أصحابها
+//                 {
+//                     path: 'reactions.user',
+//                     select: 'username ImageId',
+//                     populate: {
+//                         path: 'ImageId',
+//                         select: 'image.secure_url image.public_id'
+//                     }
+//                 }
+//             ]
+//         })
+//         .lean();
+
+//     // جمع IDs التعليقات الرئيسية
+//     const mainCommentIds = posts
+//         .flatMap(p => p.comments || [])
+//         .map(c => c._id.toString());
+
+//     // جلب كل الردود المتداخلة مع populate كامل لليوزر والصور
+//     const allReplies = await Commenttt.find({
+//         parentComment: { $in: mainCommentIds }
+//     })
+//         .populate({
+//             path: 'user',
+//             select: 'username ImageId',
+//             populate: {
+//                 path: 'ImageId',
+//                 select: 'image.secure_url image.public_id'
+//             }
+//         })
+//         .populate({
+//             path: 'reactions.user',
+//             select: 'username ImageId',
+//             populate: {
+//                 path: 'ImageId',
+//                 select: 'image.secure_url image.public_id'
+//             }
+//         })
+//         .lean();
+
+//     // بناء الشجرة للردود
+//     const buildReplies = (parentId) => {
+//         return allReplies
+//             .filter(r => r.parentComment?.toString() === parentId)
+//             .map(r => ({
+//                 ...r,
+//                 reactionsCount: calculateReactionsCount(r.reactions || []),
+//                 replies: buildReplies(r._id.toString())
+//             }));
+//     };
+
+//     // إضافة replies و reactionsCount للتعليقات الرئيسية
+//     posts.forEach(post => {
+//         post.comments = (post.comments || []).map(comment => ({
+//             ...comment,
+//             reactionsCount: calculateReactionsCount(comment.reactions || []),
+//             replies: buildReplies(comment._id.toString())
+//         }));
+//     });
+
+//     // تنسيق البوستات النهائي
+//     const formattedPosts = posts.map(post => {
+//         const reactionsCount = calculateReactionsCount(post.reactions || []);
+
+//         const countAllComments = (comments) => {
+//             return comments.reduce((sum, c) => sum + 1 + countAllComments(c.replies || []), 0);
+//         };
+
+//         return {
+//             ...post,
+//             reactionsCount,
+//             commentsCount: countAllComments(post.comments || [])
+//         };
+//     });
+
+//     res.json({
+//         message: "✅ تم جلب جميع البوستات بنجاح",
+//         count: formattedPosts.length,
+//         data: formattedPosts
+//     });
+// });
+
+
 
 export const getAllPosts = asyncHandelr(async (req, res) => {
     // دالة مساعدة لحساب reactionsCount
@@ -1469,8 +1705,18 @@ export const getAllPosts = asyncHandelr(async (req, res) => {
         return count;
     };
 
+    // ✅ إضافة Pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // جلب عدد البوستات الكلي (للـ pagination info)
+    const totalPosts = await Posttt.countDocuments({ status: "accepted" });
+
     const posts = await Posttt.find({ status: "accepted" })
         .sort({ createdAt: -1 })
+        .skip(skip)        // ← جديد: pagination
+        .limit(limit)      // ← جديد: pagination
         // populate صاحب البوست مع صورته الكرتونية
         .populate({
             path: 'user',
@@ -1577,12 +1823,26 @@ export const getAllPosts = asyncHandelr(async (req, res) => {
         };
     });
 
+    // ✅ معلومات الـ Pagination
+    const totalPages = Math.ceil(totalPosts / limit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
     res.json({
         message: "✅ تم جلب جميع البوستات بنجاح",
         count: formattedPosts.length,
+        totalPosts,
+        pagination: {
+            currentPage: page,
+            totalPages,
+            hasNextPage,
+            hasPrevPage,
+            limit
+        },
         data: formattedPosts
     });
 });
+
 
 
 

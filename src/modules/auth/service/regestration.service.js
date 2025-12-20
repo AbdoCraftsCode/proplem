@@ -1113,7 +1113,7 @@ export const getUserProfile = asyncHandelr(async (req, res) => {
     });
 });
 
-export const createPost =asyncHandelr(async (req, res) => {
+export const createPost = asyncHandelr(async (req, res) => {
     const { text } = req.body;
 
     if (!text || text.trim() === '') {
@@ -1127,17 +1127,30 @@ export const createPost =asyncHandelr(async (req, res) => {
         });
     }
 
+    // ✅ تحديد حالة البوست حسب الدور
+    let status = "pending"; // افتراضي للمستخدم العادي
+    if (req.user.role === "Admin" || req.user.role === "Owner") {
+        status = "accepted"; // قبول فوري للأدمن والمالك
+    }
+
     const post = await Posttt.create({
         text: text.trim(),
         user: req.user._id,
-        status: "pending" // افتراضي
+        status // ← ياخد القيمة المناسبة حسب الدور
     });
 
+    // رسالة مخصصة حسب الحالة
+    const message = status === "accepted"
+        ? "✅ تم نشر البوست بنجاح مباشرة"
+        : "✅ تم إنشاء البوست بنجاح (في انتظار الموافقة)";
+
     res.status(201).json({
-        message: "✅ تم إنشاء البوست بنجاح (في انتظار الموافقة)",
+        message,
         data: post
     });
 });
+
+
 
 export const addComment = asyncHandelr(async (req, res) => {
     const { text } = req.body;

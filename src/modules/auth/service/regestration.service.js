@@ -885,31 +885,55 @@ export const resetPassword = asyncHandelr(async (req, res, next) => {
 
 
 
+// import cron from 'node-cron';
+
+
+
+
+// cron.schedule('0 * * * *', async () => {
+//     console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية...');
+
+//     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+//     const result = await Usermodel.updateMany(
+//         {
+//             lastUsernameUpdate: { $lte: twentyFourHoursAgo },
+//             username: { $ne: null } // فقط اللي عندهم اسم حاليًا
+//         },
+//         {
+//             $set: { username: null },
+//             $unset: { lastUsernameUpdate: "" } // اختياري: حذف التاريخ
+//         }
+//     );
+
+//     console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين)`);
+// });
+
+
+
 import cron from 'node-cron';
 
+// كل دقيقة (للاختبار فقط)
+cron.schedule('* * * * *', async () => {
+    console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية... (وضع اختبار: كل دقيقة)');
 
-
-
-cron.schedule('0 * * * *', async () => {
-    console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية...');
-
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // بعد دقيقة واحدة فقط من آخر تحديث (للاختبار)
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
 
     const result = await Usermodel.updateMany(
         {
-            lastUsernameUpdate: { $lte: twentyFourHoursAgo },
-            username: { $ne: null } // فقط اللي عندهم اسم حاليًا
+            lastUsernameUpdate: { $lte: oneMinuteAgo },
+            username: { $ne: null },
+            role: "User" // فقط المستخدمين العاديين
         },
         {
             $set: { username: null },
-            $unset: { lastUsernameUpdate: "" } // اختياري: حذف التاريخ
+            $unset: { lastUsernameUpdate: "" }
         }
     );
 
-    console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين)`);
+    console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين) عادي(ين) في وضع الاختبار`);
 });
-
-
 
 export const updateUserProfile = asyncHandelr(async (req, res) => {
     const { username, ImageId } = req.body;
@@ -955,6 +979,15 @@ export const updateUserProfile = asyncHandelr(async (req, res) => {
         }
     });
 });
+
+
+
+
+
+
+
+
+
 
 
 export const getUserProfile = asyncHandelr(async (req, res) => {

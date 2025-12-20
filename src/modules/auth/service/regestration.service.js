@@ -1113,11 +1113,18 @@ export const getUserProfile = asyncHandelr(async (req, res) => {
     });
 });
 
-export const createPost = asyncHandelr(async (req, res) => {
+export const createPost =asyncHandelr(async (req, res) => {
     const { text } = req.body;
 
     if (!text || text.trim() === '') {
         return res.status(400).json({ message: "❌ النص مطلوب" });
+    }
+
+    // ✅ التحقق من وجود username
+    if (!req.user.username || req.user.username === null || req.user.username.trim() === '') {
+        return res.status(403).json({
+            message: "❌ ليس لديك اسم مستخدم. الرجاء قم بإنشاء اسم مستخدم جديد"
+        });
     }
 
     const post = await Posttt.create({

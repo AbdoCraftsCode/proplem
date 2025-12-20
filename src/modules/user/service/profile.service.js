@@ -544,7 +544,9 @@ async function sendNotification(deviceToken, title, body) {
     }
 }
 
-// sendNotification('ftrRnnUPRfKrE41oSTUcz7:APA91bGDa5hYvCiGIM2yRlqIOcq5D_kYpDsueiPrFlJZ5vyHNT9hCKIG7sYVyEf2ZNZsfEHv9kREmzCYSfoeq82fyjl47orndHZFHfSpCLEH29obiHam1-k', 'عنوان الإشعار', 'نص الإشعار هنا');
+
+
+// sendNotification('fHoVI3GJT1K1is9nmIDqTk:APA91bH2d5AoSQCQktcUwKv4-0CbQxb_Dnx_H-thgCGXrLN6d01qQI2v3FAhReuUrBWmtuEeuQE9jeNIaNYOIZ-gedxDEr8Cuw9AH8HMsN-wifgMsYjPUL8', 'عنوان الإشعار', 'نص الإشعار هنا');
 
 export const savetoken = asyncHandelr(async (req, res, next) => {
     const { userId, fcmToken } = req.body;
@@ -582,6 +584,8 @@ export const deleteFcmToken = asyncHandelr(async (req, res) => {
         res.status(500).json({ message: "حدث خطأ أثناء حذف التوكن", error: error.message });
     }
 });
+
+
 
 
 

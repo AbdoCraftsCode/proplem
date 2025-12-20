@@ -1171,6 +1171,51 @@ export const addComment = asyncHandelr(async (req, res) => {
     });
 });
 
+// export const reactToPost = asyncHandelr(async (req, res) => {
+//     const { type } = req.body;
+//     const { postId } = req.params;
+
+//     if (!["like", "love", "sad", "angry"].includes(type)) {
+//         return res.status(400).json({ message: "❌ نوع الـ reaction غير صالح" });
+//     }
+
+//     const post = await Posttt.findById(postId);
+//     if (!post) {
+//         return res.status(404).json({ message: "❌ البوست غير موجود" });
+//     }
+
+//     // البحث عن reaction موجود من نفس المستخدم ونفس النوع
+//     const existingReactionIndex = post.reactions.findIndex(
+//         r => r.user.toString() === req.user._id.toString() && r.type === type
+//     );
+
+//     // لو موجود → نحذفه (إلغاء الـ reaction)
+//     if (existingReactionIndex !== -1) {
+//         post.reactions.splice(existingReactionIndex, 1);
+//         await post.save();
+//         return res.json({ message: "❌ تم إلغاء الـ reaction" });
+//     }
+
+//     // لو مش موجود من نفس النوع → نزيل أي reaction قديم من نفس المستخدم (للسماح بتغيير النوع فقط)
+//     post.reactions = post.reactions.filter(
+//         r => r.user.toString() !== req.user._id.toString()
+//     );
+
+//     // إضافة الـ reaction الجديد
+//     post.reactions.push({
+//         user: req.user._id,
+//         type
+//     });
+
+//     await post.save();
+
+//     res.json({
+//         message: `✅ تم إضافة ${type} بنجاح`,
+//         data: { type }
+//     });
+// });
+
+
 export const reactToPost = asyncHandelr(async (req, res) => {
     const { type } = req.body;
     const { postId } = req.params;
@@ -1179,7 +1224,12 @@ export const reactToPost = asyncHandelr(async (req, res) => {
         return res.status(400).json({ message: "❌ نوع الـ reaction غير صالح" });
     }
 
-    const post = await Posttt.findById(postId);
+    const post = await Posttt.findById(postId)
+        .populate({
+            path: 'user',
+            select: 'fcmToken lang username' // ← أضفنا lang
+        });
+
     if (!post) {
         return res.status(404).json({ message: "❌ البوست غير موجود" });
     }
@@ -1189,19 +1239,23 @@ export const reactToPost = asyncHandelr(async (req, res) => {
         r => r.user.toString() === req.user._id.toString() && r.type === type
     );
 
-    // لو موجود → نحذفه (إلغاء الـ reaction)
+    let action = "added";
+
     if (existingReactionIndex !== -1) {
         post.reactions.splice(existingReactionIndex, 1);
+        action = "removed";
         await post.save();
-        return res.json({ message: "❌ تم إلغاء الـ reaction" });
+
+        return res.json({
+            message: "❌ تم إلغاء الـ reaction",
+            data: { type }
+        });
     }
 
-    // لو مش موجود من نفس النوع → نزيل أي reaction قديم من نفس المستخدم (للسماح بتغيير النوع فقط)
     post.reactions = post.reactions.filter(
         r => r.user.toString() !== req.user._id.toString()
     );
 
-    // إضافة الـ reaction الجديد
     post.reactions.push({
         user: req.user._id,
         type
@@ -1209,11 +1263,129 @@ export const reactToPost = asyncHandelr(async (req, res) => {
 
     await post.save();
 
+    // ✅ إرسال إشعار + تخزينه (فقط لما يضيف reaction جديد)
+    if (action === "added" && post.user.fcmToken) {
+        // تحديد اللغة (افتراضي عربي لو مفيش lang)
+        const userLang = post.user.lang || "ar";
+
+        // ترجمة الرسائل حسب اللغة
+        const titles = {
+            ar: "👍 تفاعل جديد على بوستك!",
+            en: "👍 New reaction on your post!"
+        };
+
+        const reactionWords = {
+            like: { ar: "إعجاب", en: "like" },
+            love: { ar: "حب", en: "love" },
+            sad: { ar: "حزن", en: "sad" },
+            angry: { ar: "غضب", en: "angry" }
+        };
+
+        const bodies = {
+            ar: `${req.user.username || "شخص ما"} قام بـ ${reactionWords[type].ar} على بوستك`,
+            en: `${req.user.username || "Someone"} ${reactionWords[type].en}d your post`
+        };
+
+        const title = titles[userLang];
+        const body = bodies[userLang];
+        // في جزء الإشعار داخل reactToPost
+        try {
+            await admin.messaging().send({
+                notification: { title, body },
+                data: {
+                    postId: post._id.toString(),
+                    type: "reaction"
+                },
+                token: post.user.fcmToken,
+            });
+
+            // تخزين الإشعار باللغتين (مع السكيما الجديدة)
+            await NotificationModell.create({
+                userId: post.user._id,
+                title: {
+                    ar: titles.ar,
+                    en: titles.en
+                },
+                body: {
+                    ar: bodies.ar,
+                    en: bodies.en
+                },
+                type: "reaction",
+                deviceToken: post.user.fcmToken,
+                data: {
+                    postId: post._id.toString(),
+                    reactorUsername: req.user.username || "Someone"
+                }
+            });
+
+            console.log(`✅ تم إرسال وتخزين إشعار reaction (${userLang})`);
+        } catch (error) {
+            console.error("❌ فشل إرسال إشعار الـ reaction:", error.message);
+        }
+    }
+
     res.json({
         message: `✅ تم إضافة ${type} بنجاح`,
         data: { type }
     });
 });
+
+
+export const changeUserLanguage = asyncHandelr(async (req, res) => {
+    const { lang } = req.body;
+
+    // اللغات المسموحة
+    const allowedLanguages = ["ar", "en"];
+    if (!lang || !allowedLanguages.includes(lang.toLowerCase())) {
+        return res.status(400).json({
+            message: "❌ اللغة غير صالحة. يجب أن تكون 'ar' أو 'en'"
+        });
+    }
+
+    const user = req.user; // من middleware protect
+
+    user.lang = lang.toLowerCase();
+    await user.save();
+
+    res.status(200).json({
+        message: "✅ تم تغيير اللغة بنجاح",
+        language: user.lang,
+        profile: {
+            _id: user._id,
+            username: user.username,
+            email: user.email,
+            lang: user.lang
+        }
+    });
+});
+
+
+export const GetMyNotifications = asyncHandelr(async (req, res) => {
+    const userId = req.user._id;
+
+    const notifications = await NotificationModell.find({ userId })
+        .sort({ createdAt: -1 }) // الأحدث أولاً
+        .select('title type body isRead createdAt'); // نختار الحقول المفيدة
+
+    // اختياري: تحديث الإشعارات كـ مقروءة (unread → read)
+    // لو عايز تعمل ده، ألغي التعليق من السطرين دول:
+    // await NotificationModell.updateMany(
+    //     { userId, isRead: false },
+    //     { isRead: true }
+    // );
+
+    const unreadCount = notifications.filter(n => !n.isRead).length;
+
+    res.status(200).json({
+        message: notifications.length
+            ? "✅ تم جلب إشعاراتك بنجاح"
+            : "📭 لا توجد إشعارات حاليًا",
+        count: notifications.length,
+        unreadCount,
+        notifications
+    });
+});
+
 export const getMyPosts = asyncHandelr(async (req, res) => {
     const posts = await Posttt.find({
         user: req.user._id,
@@ -1411,6 +1583,35 @@ export const getAllPosts = asyncHandelr(async (req, res) => {
         data: formattedPosts
     });
 });
+
+
+
+export const MarkAllNotificationsAsRead = asyncHandelr(async (req, res) => {
+    const userId = req.user._id;
+
+    // تحديث كل الإشعارات غير المقروءة للمستخدم
+    const result = await NotificationModell.updateMany(
+        {
+            userId,
+            isRead: false
+        },
+        {
+            isRead: true
+        }
+    );
+
+    if (result.modifiedCount === 0) {
+        return res.status(200).json({
+            message: "📭 لا توجد إشعارات غير مقروءة"
+        });
+    }
+
+    res.status(200).json({
+        message: `✅ تم تعليم ${result.modifiedCount} إشعار(ات) كمقروءة بنجاح`,
+        markedAsRead: result.modifiedCount
+    });
+});
+
 
 
 // controllers/postController.js

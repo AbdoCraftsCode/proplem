@@ -2,19 +2,52 @@
 import mongoose from "mongoose";
 
 const notificationSchema = new mongoose.Schema({
-    restaurant: { type: mongoose.Schema.Types.ObjectId, ref: "Restauranttt",  },
-    order: { type: mongoose.Schema.Types.ObjectId, ref: "Orderrr", },
-    supermarket: { type: mongoose.Schema.Types.ObjectId, ref: "Supermarket" },
-    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    
-    // ⬅️ العميل اللي وُجه له الإشعار
-    driver: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    title: String,
-    type: String,
-    body: String,
-    deviceToken: String,
-    isRead: { type: Boolean, default: false },
-}, { timestamps: true });
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+    },
 
-export const NotificationModell = mongoose.model("Notificationnnn", notificationSchema);
+    title: {
+        ar: { type: String, required: true },
+        en: { type: String, required: true }
+    },
+
+    body: {
+        ar: { type: String, required: true },
+        en: { type: String, required: true }
+    },
+
+    type: {
+        type: String,
+        required: true,
+        enum: ["reaction", "comment", "like", "follow", "mention", "other"], // يمكنك إضافة أنواع أخرى
+        default: "other"
+    },
+
+    deviceToken: {
+        type: String
+    },
+
+    isRead: {
+        type: Boolean,
+        default: false
+    },
+
+    // اختياري: لو عايز تضيف data إضافية (مثل postId أو commentId)
+    data: {
+        type: Map,
+        of: String,
+        default: {}
+    }
+}, {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// فهرسة للأداء
+notificationSchema.index({ userId: 1, createdAt: -1 });
+notificationSchema.index({ isRead: 1 });
+
+export const NotificationModell = mongoose.model("Notificationnnnnn", notificationSchema); // غيرت الاسم للنظافة: Notification بدل Notificationnnn

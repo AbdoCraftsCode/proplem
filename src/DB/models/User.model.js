@@ -90,6 +90,8 @@ const userSchema = new Schema({
 
  
     fcmToken: { type: String, default: null },
+    lang: { type: String, default: null },
+
     isOnline: { type: Boolean , default: false },
     userId: String,
     // OTPs

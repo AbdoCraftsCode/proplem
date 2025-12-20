@@ -2498,7 +2498,7 @@ export const deleteUser = asyncHandelr(async (req, res) => {
     }
 
     // حذف المستخدم نهائيًا
-    await User.findByIdAndDelete(userId);
+    await Usermodel.findByIdAndDelete(userId);
 
     res.status(200).json({
         message: `✅ تم حذف المستخدم "${userToDelete.username}" بنجاح`,

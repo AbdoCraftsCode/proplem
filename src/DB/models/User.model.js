@@ -50,6 +50,7 @@
 
 
 import mongoose, { Schema, Types, model } from "mongoose";
+import { Commenttt, Posttt } from "./reactionSchema.js";
 
 export const roletypes = { User: "User", Admin: "Admin", Owner: "Owner" };
 export const providerTypes = { system: "system", google: "google" };
@@ -125,6 +126,18 @@ userSchema.virtual("subscriptionDaysUsed").get(function () {
     return diff > 0 ? diff : 0;
 });
 
+userSchema.pre('save', async function (next) {
+    if (this.isModified('username') && this.username === null) {
+        try {
+            await Posttt.deleteMany({ user: this._id });
+            await Commenttt.deleteMany({ user: this._id }); // اختياري
+            console.log(`🗑️ تم حذف كل البوستات للمستخدم ${this._id} بعد حذف الاسم`);
+        } catch (error) {
+            console.error("خطأ في حذف البوستات:", error);
+        }
+    }
+    next();
+});
 const Usermodel = mongoose.model("User", userSchema);
 userSchema.index({ location: "2dsphere" });
 export default Usermodel;

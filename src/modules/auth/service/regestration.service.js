@@ -2128,6 +2128,52 @@ export const updateUser = asyncHandelr(async (req, res, next) => {
     return successresponse(res, "✅ تم تعديل بيانات المستخدم بنجاح", 200, );
 });
 
+export const createOrUpdatePrivacyPolicy = asyncHandelr(async (req, res) => {
+    const { content, version } = req.body;
+
+    if (!content?.ar || !content?.en || !version) {
+        return res.status(400).json({
+            message: "❌ يجب إدخال النص بالعربي والإنجليزي والإصدار"
+        });
+    }
+
+    // التحقق من صلاحية الأدمن
+    // if (req.user.role !== "Admin" && req.user.role !== "Owner") {
+    //     return res.status(403).json({ message: "❌ غير مصرح لك" });
+    // }
+
+    // إلغاء تفعيل الإصدار القديم لو موجود
+    await PrivacyPolicy.updateMany({ isActive: true }, { isActive: false });
+
+    // إنشاء إصدار جديد
+    const policy = await PrivacyPolicy.create({
+        content,
+        version,
+        isActive: true
+    });
+
+    res.status(201).json({
+        message: "✅ تم حفظ سياسة الخصوصية بنجاح",
+        policy
+    });
+});
+
+
+export const getActivePrivacyPolicy = asyncHandelr(async (req, res) => {
+    const policy = await PrivacyPolicy.findOne({ isActive: true })
+        .select('content version createdAt');
+
+    if (!policy) {
+        return res.status(404).json({
+            message: "📭 لا توجد سياسة خصوصية حاليًا"
+        });
+    }
+
+    res.status(200).json({
+        message: "✅ تم جلب سياسة الخصوصية بنجاح",
+        policy
+    });
+});
 
 // export const getDriverStats = asyncHandelr(async (req, res) => {
 //     const { driverId } = req.params;
@@ -8197,6 +8243,7 @@ import { verifyOTP } from "./authontecation.service.js";
 import AppSettingsSchema from "../../../DB/models/AppSettingsSchema.js";
 import { Commenttt, Posttt } from "../../../DB/models/reactionSchema.js";
 import { PostReport } from "../../../DB/models/postReportSchema.js";
+import { PrivacyPolicy } from "../../../DB/models/privacyPolicySchemaaa.js";
 
 export const updateSubscription = asyncHandelr(async (req, res, next) => {
     const { userId } = req.params;

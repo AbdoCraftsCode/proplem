@@ -1123,7 +1123,7 @@ export const createPost = asyncHandelr(async (req, res) => {
     // ✅ التحقق من وجود username
     // ✅ التحقق من وجود username
     if (!req.user.username || req.user.username === null || req.user.username.trim() === '') {
-        return res.status(403).json({  // 403 أفضل من 404 هنا لأنه مشكلة صلاحية
+        return res.status(201).json({  // 403 أفضل من 404 هنا لأنه مشكلة صلاحية
             message: "المستخدم expired"
         });
     }

@@ -1229,6 +1229,17 @@ export const addComment = asyncHandelr(async (req, res) => {
 // });
 
 
+
+
+
+
+
+
+
+
+
+
+
 export const reactToPost = asyncHandelr(async (req, res) => {
     const { type } = req.body;
     const { postId } = req.params;
@@ -1240,7 +1251,7 @@ export const reactToPost = asyncHandelr(async (req, res) => {
     const post = await Posttt.findById(postId)
         .populate({
             path: 'user',
-            select: 'fcmToken lang username' // ← أضفنا lang
+            select: 'fcmToken lang username'
         });
 
     if (!post) {
@@ -1277,11 +1288,9 @@ export const reactToPost = asyncHandelr(async (req, res) => {
     await post.save();
 
     // ✅ إرسال إشعار + تخزينه (فقط لما يضيف reaction جديد)
-    if (action === "added" && post.user.fcmToken) {
-        // تحديد اللغة (افتراضي عربي لو مفيش lang)
+    if (action === "added" && post.user._id.toString() !== req.user._id.toString()) { // ما تبعتش إشعار لنفسك
         const userLang = post.user.lang || "ar";
 
-        // ترجمة الرسائل حسب اللغة
         const titles = {
             ar: "👍 تفاعل جديد على بوستك!",
             en: "👍 New reaction on your post!"
@@ -1301,20 +1310,12 @@ export const reactToPost = asyncHandelr(async (req, res) => {
 
         const title = titles[userLang];
         const body = bodies[userLang];
-        // في جزء الإشعار داخل reactToPost
-        try {
-            await admin.messaging().send({
-                notification: { title, body },
-                data: {
-                    postId: post._id.toString(),
-                    type: "reaction"
-                },
-                token: post.user.fcmToken,
-            });
 
-            // تخزين الإشعار باللغتين (مع السكيما الجديدة)
+        // ✅ تخزين الإشعار أولاً (دايمًا، حتى لو التوكن باطل)
+        try {
             await NotificationModell.create({
                 userId: post.user._id,
+                postId: post._id,
                 title: {
                     ar: titles.ar,
                     en: titles.en
@@ -1324,16 +1325,45 @@ export const reactToPost = asyncHandelr(async (req, res) => {
                     en: bodies.en
                 },
                 type: "reaction",
-                deviceToken: post.user.fcmToken,
+                deviceToken: post.user.fcmToken || null,
                 data: {
                     postId: post._id.toString(),
                     reactorUsername: req.user.username || "Someone"
                 }
             });
 
-            console.log(`✅ تم إرسال وتخزين إشعار reaction (${userLang})`);
-        } catch (error) {
-            console.error("❌ فشل إرسال إشعار الـ reaction:", error.message);
+            console.log(`✅ تم تخزين إشعار reaction للمستخدم ${post.user._id}`);
+        } catch (storeError) {
+            console.error("❌ فشل تخزين الإشعار في الداتابيز:", storeError.message);
+        }
+
+        // ✅ محاولة إرسال الإشعار (لو في توكن)
+        if (post.user.fcmToken) {
+            try {
+                await admin.messaging().send({
+                    notification: { title, body },
+                    data: {
+                        postId: post._id.toString(),
+                        type: "reaction"
+                    },
+                    token: post.user.fcmToken,
+                });
+
+                console.log(`✅ تم إرسال إشعار reaction (${userLang}) إلى ${post.user.username}`);
+            } catch (sendError) {
+                console.error("❌ فشل إرسال إشعار الـ reaction:", sendError.message);
+
+                if (sendError.message.includes("Requested entity was not found") ||
+                    sendError.message.includes("The registration token is not a valid FCM registration token")) {
+
+                    console.log(`🗑️ توكن FCM باطل، جاري حذفه من المستخدم ${post.user._id}`);
+
+                    post.user.fcmToken = null;
+                    await post.user.save();
+                }
+            }
+        } else {
+            console.log(`⚠️ لا يوجد fcmToken للمستخدم ${post.user._id}، الإشعار مخزن فقط`);
         }
     }
 
@@ -1378,7 +1408,7 @@ export const GetMyNotifications = asyncHandelr(async (req, res) => {
 
     const notifications = await NotificationModell.find({ userId })
         .sort({ createdAt: -1 }) // الأحدث أولاً
-        .select('title type body isRead createdAt'); // نختار الحقول المفيدة
+        .select('title type body isRead createdAt postId'); // نختار الحقول المفيدة
 
     // اختياري: تحديث الإشعارات كـ مقروءة (unread → read)
     // لو عايز تعمل ده، ألغي التعليق من السطرين دول:

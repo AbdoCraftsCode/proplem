@@ -1121,9 +1121,10 @@ export const createPost = asyncHandelr(async (req, res) => {
     }
 
     // ✅ التحقق من وجود username
+    // ✅ التحقق من وجود username
     if (!req.user.username || req.user.username === null || req.user.username.trim() === '') {
-        return res.status(404).json({
-            message: "ليس لديك اسم مستخدم الرجاء  قم بإنشاء اسم مستخدم جديد"
+        return res.status(403).json({  // 403 أفضل من 404 هنا لأنه مشكلة صلاحية
+            message: "المستخدم expired"
         });
     }
 
@@ -1152,37 +1153,7 @@ export const createPost = asyncHandelr(async (req, res) => {
  
 
 
-// export const addComment = asyncHandelr(async (req, res) => {
-//     const { text } = req.body;
-//     const { postId } = req.params;
 
-//     if (!text || text.trim() === '') {
-//         return res.status(400).json({ message: "❌ نص التعليق مطلوب" });
-//     }
-
-//     const post = await Posttt.findById(postId);
-//     if (!post) {
-//         return res.status(404).json({ message: "❌ البوست غير موجود" });
-//     }
-
-//     // إنشاء الكومنت (رئيسي → parentComment = null)
-//     const comment = await Commenttt.create({
-//         text: text.trim(),
-//         user: req.user._id,
-//         parentComment: null
-//     });
-
-//     // إضافته للبوست
-//     post.comments.push(comment._id);
-//     await post.save();
-
-//     await comment.populate('user', 'username ImageId'); // اختياري: جلب بيانات اليوزر
-
-//     res.status(201).json({
-//         message: "✅ تم إضافة التعليق بنجاح",
-//         data: comment
-//     });
-// });
 
 
 

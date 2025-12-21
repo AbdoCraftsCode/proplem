@@ -1122,7 +1122,7 @@ export const createPost = asyncHandelr(async (req, res) => {
 
     // ✅ التحقق من وجود username
     if (!req.user.username || req.user.username === null || req.user.username.trim() === '') {
-        return res.status(201).json({
+        return res.status(404).json({
             message: "ليس لديك اسم مستخدم الرجاء  قم بإنشاء اسم مستخدم جديد"
         });
     }

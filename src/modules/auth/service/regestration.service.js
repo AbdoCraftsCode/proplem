@@ -2446,6 +2446,54 @@ export const signupServiceProvider = asyncHandelr(async (req, res, next) => {
 
 
 
+// export const updatePostStatus = asyncHandelr(async (req, res) => {
+//     const { postId } = req.params;
+//     const { status } = req.body; // "accepted" أو "rejected"
+
+//     // التحقق من الحالة الصالحة
+//     if (!["accepted", "rejected"].includes(status)) {
+//         return res.status(400).json({
+//             message: "❌ الحالة غير صالحة. يجب أن تكون 'accepted' أو 'rejected'"
+//         });
+//     }
+
+//     // البحث عن البوست
+//     const post = await Posttt.findById(postId)
+//         .populate('user', 'username ImageId');
+
+//     if (!post) {
+//         return res.status(404).json({
+//             message: "❌ البوست غير موجود"
+//         });
+//     }
+
+//     // التحقق من صلاحية الأدمن (افترض إن عندك role في اليوزر)
+//     // if (req.user.role !== "Admin" && req.user.role !== "Owner") {
+//     //     return res.status(403).json({
+//     //         message: "❌ غير مصرح لك بتغيير حالة البوست"
+//     //     });
+//     // }
+
+//     // تحديث الحالة
+//     post.status = status;
+//     await post.save();
+
+//     // رسالة نجاح مخصصة
+//     const action = status === "accepted" ? "تم قبول" : "تم رفض";
+//     res.status(200).json({
+//         message: `✅ ${action} البوست بنجاح`,
+//         post: {
+//             _id: post._id,
+//             text: post.text,
+//             status: post.status,
+//             user: post.user,
+//             createdAt: post.createdAt
+//         }
+//     });
+// });
+
+
+
 export const updatePostStatus = asyncHandelr(async (req, res) => {
     const { postId } = req.params;
     const { status } = req.body; // "accepted" أو "rejected"
@@ -2457,9 +2505,12 @@ export const updatePostStatus = asyncHandelr(async (req, res) => {
         });
     }
 
-    // البحث عن البوست
+    // البحث عن البوست مع populate لليوزر
     const post = await Posttt.findById(postId)
-        .populate('user', 'username ImageId');
+        .populate({
+            path: 'user',
+            select: 'fcmToken lang username'
+        });
 
     if (!post) {
         return res.status(404).json({
@@ -2467,7 +2518,7 @@ export const updatePostStatus = asyncHandelr(async (req, res) => {
         });
     }
 
-    // التحقق من صلاحية الأدمن (افترض إن عندك role في اليوزر)
+    // التحقق من صلاحية الأدمن
     // if (req.user.role !== "Admin" && req.user.role !== "Owner") {
     //     return res.status(403).json({
     //         message: "❌ غير مصرح لك بتغيير حالة البوست"
@@ -2478,22 +2529,108 @@ export const updatePostStatus = asyncHandelr(async (req, res) => {
     post.status = status;
     await post.save();
 
-    // رسالة نجاح مخصصة
+    // ✅ إرسال إشعار لصاحب البوست
+    if (post.user) {
+        const userLang = post.user.lang || "ar";
+
+        const titles = {
+            accepted: {
+                ar: "🎉 تم قبول بوستك!",
+                en: "🎉 Your post has been accepted!"
+            },
+            rejected: {
+                ar: "❌ تم رفض بوستك",
+                en: "❌ Your post has been rejected"
+            }
+        };
+
+        const bodies = {
+            accepted: {
+                ar: "مبروك! بوستك تم نشره الآن وأصبح مرئيًا للجميع.",
+                en: "Congratulations! Your post is now published and visible to everyone."
+            },
+            rejected: {
+                ar: "تم رفض بوستك لعدم مطابقته لمعايير المنصة.",
+                en: "Your post was rejected because it does not comply with platform guidelines."
+            }
+        };
+
+        const title = titles[status][userLang];
+        const body = bodies[status][userLang];
+
+        // تخزين الإشعار أولاً
+        try {
+            await NotificationModell.create({
+                userId: post.user._id,
+                postId: post._id,
+                title: {
+                    ar: titles[status].ar,
+                    en: titles[status].en
+                },
+                body: {
+                    ar: bodies[status].ar,
+                    en: bodies[status].en
+                },
+                type: "post_status",
+                deviceToken: post.user.fcmToken || null,
+                data: {
+                    postId: post._id.toString(),
+                    status: status
+                }
+            });
+
+            console.log(`✅ تم تخزين إشعار ${status} للبوست للمستخدم ${post.user._id}`);
+        } catch (storeError) {
+            console.error("❌ فشل تخزين إشعار حالة البوست:", storeError.message);
+        }
+
+        // محاولة إرسال الإشعار
+        if (post.user.fcmToken) {
+            try {
+                await admin.messaging().send({
+                    notification: { title, body },
+                    data: {
+                        postId: post._id.toString(),
+                        type: "post_status",
+                        status: status
+                    },
+                    token: post.user.fcmToken,
+                });
+
+                console.log(`✅ تم إرسال إشعار ${status} للبوست (${userLang})`);
+            } catch (sendError) {
+                console.error("❌ فشل إرسال إشعار حالة البوست:", sendError.message);
+
+                if (sendError.message.includes("Requested entity was not found") ||
+                    sendError.message.includes("The registration token is not a valid FCM registration token")) {
+
+                    console.log(`🗑️ توكن FCM باطل، جاري حذفه من المستخدم ${post.user._id}`);
+
+                    post.user.fcmToken = null;
+                    await post.user.save();
+                }
+            }
+        } else {
+            console.log(`⚠️ لا يوجد fcmToken، الإشعار مخزن فقط`);
+        }
+    }
+
+    // رسالة النجاح للأدمن
     const action = status === "accepted" ? "تم قبول" : "تم رفض";
+
     res.status(200).json({
         message: `✅ ${action} البوست بنجاح`,
         post: {
             _id: post._id,
             text: post.text,
             status: post.status,
-            user: post.user,
+            user: {
+                username: post.user.username
+            },
             createdAt: post.createdAt
         }
     });
 });
-
-
-
 
 
 export const createPostReport = asyncHandelr(async (req, res) => {
@@ -2583,6 +2720,9 @@ export const reviewReport = asyncHandelr(async (req, res) => {
         report
     });
 });
+
+
+
 
 export const deletePost = asyncHandelr(async (req, res) => {
     const { postId } = req.params;

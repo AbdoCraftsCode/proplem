@@ -26,7 +26,7 @@ const notificationSchema = new mongoose.Schema({
     type: {
         type: String,
         required: true,
-        enum: ["reaction", "comment", "like", "follow", "mention", "other"], // يمكنك إضافة أنواع أخرى
+        enum: ["reaction", "comment", "like", "follow", "mention", "post_status"], // يمكنك إضافة أنواع أخرى
         default: "other"
     },
 

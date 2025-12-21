@@ -1122,8 +1122,8 @@ export const createPost = asyncHandelr(async (req, res) => {
 
     // ✅ التحقق من وجود username
     if (!req.user.username || req.user.username === null || req.user.username.trim() === '') {
-        return res.status(403).json({
-            message: "❌ ليس لديك اسم مستخدم. الرجاء قم بإنشاء اسم مستخدم جديد"
+        return res.status(201).json({
+            message: "ليس لديك اسم مستخدم الرجاء  قم بإنشاء اسم مستخدم جديد"
         });
     }
 
@@ -2030,6 +2030,14 @@ export const reactToComment = asyncHandelr(async (req, res) => {
         data: { type }
     });
 });
+
+
+
+
+
+
+
+
 
 
 

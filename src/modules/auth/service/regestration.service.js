@@ -1149,6 +1149,43 @@ export const createPost = asyncHandelr(async (req, res) => {
         data: post
     });
 });
+ 
+
+
+// export const addComment = asyncHandelr(async (req, res) => {
+//     const { text } = req.body;
+//     const { postId } = req.params;
+
+//     if (!text || text.trim() === '') {
+//         return res.status(400).json({ message: "❌ نص التعليق مطلوب" });
+//     }
+
+//     const post = await Posttt.findById(postId);
+//     if (!post) {
+//         return res.status(404).json({ message: "❌ البوست غير موجود" });
+//     }
+
+//     // إنشاء الكومنت (رئيسي → parentComment = null)
+//     const comment = await Commenttt.create({
+//         text: text.trim(),
+//         user: req.user._id,
+//         parentComment: null
+//     });
+
+//     // إضافته للبوست
+//     post.comments.push(comment._id);
+//     await post.save();
+
+//     await comment.populate('user', 'username ImageId'); // اختياري: جلب بيانات اليوزر
+
+//     res.status(201).json({
+//         message: "✅ تم إضافة التعليق بنجاح",
+//         data: comment
+//     });
+// });
+
+
+
 
 
 
@@ -1160,12 +1197,17 @@ export const addComment = asyncHandelr(async (req, res) => {
         return res.status(400).json({ message: "❌ نص التعليق مطلوب" });
     }
 
-    const post = await Posttt.findById(postId);
+    const post = await Posttt.findById(postId)
+        .populate({
+            path: 'user',
+            select: 'fcmToken lang username'
+        });
+
     if (!post) {
         return res.status(404).json({ message: "❌ البوست غير موجود" });
     }
 
-    // إنشاء الكومنت (رئيسي → parentComment = null)
+    // إنشاء الكومنت الرئيسي
     const comment = await Commenttt.create({
         text: text.trim(),
         user: req.user._id,
@@ -1176,63 +1218,89 @@ export const addComment = asyncHandelr(async (req, res) => {
     post.comments.push(comment._id);
     await post.save();
 
-    await comment.populate('user', 'username ImageId'); // اختياري: جلب بيانات اليوزر
+    await comment.populate('user', 'username ImageId');
+
+    // ✅ إرسال إشعار لصاحب البوست (لو مش هو نفسه اللي علق)
+    if (post.user && post.user._id.toString() !== req.user._id.toString()) {
+        const userLang = post.user.lang || "ar";
+
+        const titles = {
+            ar: "💬 تعليق جديد على بوستك!",
+            en: "💬 New comment on your post!"
+        };
+
+        const bodies = {
+            ar: `${req.user.username || "شخص ما"} علق على بوستك: "${text.trim()}"`,
+            en: `${req.user.username || "Someone"} commented on your post: "${text.trim()}"`
+        };
+
+        const title = titles[userLang];
+        const body = bodies[userLang];
+
+        // ✅ تخزين الإشعار أولاً
+        try {
+            await NotificationModell.create({
+                userId: post.user._id,
+                postId: post._id,
+                commentId: comment._id,
+                title: {
+                    ar: titles.ar,
+                    en: titles.en
+                },
+                body: {
+                    ar: bodies.ar,
+                    en: bodies.en
+                },
+                type: "comment",
+                deviceToken: post.user.fcmToken || null,
+                data: {
+                    postId: post._id.toString(),
+                    commentId: comment._id.toString(),
+                    commenterUsername: req.user.username || "Someone"
+                }
+            });
+
+            console.log(`✅ تم تخزين إشعار تعليق جديد للمستخدم ${post.user._id}`);
+        } catch (storeError) {
+            console.error("❌ فشل تخزين إشعار التعليق:", storeError.message);
+        }
+
+        // ✅ إرسال الإشعار لو في توكن
+        if (post.user.fcmToken) {
+            try {
+                await admin.messaging().send({
+                    notification: { title, body },
+                    data: {
+                        postId: post._id.toString(),
+                        commentId: comment._id.toString(),
+                        type: "comment"
+                    },
+                    token: post.user.fcmToken,
+                });
+
+                console.log(`✅ تم إرسال إشعار تعليق جديد (${userLang})`);
+            } catch (sendError) {
+                console.error("❌ فشل إرسال إشعار التعليق:", sendError.message);
+
+                if (sendError.message.includes("Requested entity was not found") ||
+                    sendError.message.includes("The registration token is not a valid FCM registration token")) {
+
+                    console.log(`🗑️ توكن FCM باطل، جاري حذفه من المستخدم ${post.user._id}`);
+
+                    post.user.fcmToken = null;
+                    await post.user.save();
+                }
+            }
+        } else {
+            console.log(`⚠️ لا يوجد fcmToken لصاحب البوست، الإشعار مخزن فقط`);
+        }
+    }
 
     res.status(201).json({
         message: "✅ تم إضافة التعليق بنجاح",
         data: comment
     });
 });
-
-// export const reactToPost = asyncHandelr(async (req, res) => {
-//     const { type } = req.body;
-//     const { postId } = req.params;
-
-//     if (!["like", "love", "sad", "angry"].includes(type)) {
-//         return res.status(400).json({ message: "❌ نوع الـ reaction غير صالح" });
-//     }
-
-//     const post = await Posttt.findById(postId);
-//     if (!post) {
-//         return res.status(404).json({ message: "❌ البوست غير موجود" });
-//     }
-
-//     // البحث عن reaction موجود من نفس المستخدم ونفس النوع
-//     const existingReactionIndex = post.reactions.findIndex(
-//         r => r.user.toString() === req.user._id.toString() && r.type === type
-//     );
-
-//     // لو موجود → نحذفه (إلغاء الـ reaction)
-//     if (existingReactionIndex !== -1) {
-//         post.reactions.splice(existingReactionIndex, 1);
-//         await post.save();
-//         return res.json({ message: "❌ تم إلغاء الـ reaction" });
-//     }
-
-//     // لو مش موجود من نفس النوع → نزيل أي reaction قديم من نفس المستخدم (للسماح بتغيير النوع فقط)
-//     post.reactions = post.reactions.filter(
-//         r => r.user.toString() !== req.user._id.toString()
-//     );
-
-//     // إضافة الـ reaction الجديد
-//     post.reactions.push({
-//         user: req.user._id,
-//         type
-//     });
-
-//     await post.save();
-
-//     res.json({
-//         message: `✅ تم إضافة ${type} بنجاح`,
-//         data: { type }
-//     });
-// });
-
-
-
-
-
-
 
 
 
@@ -1372,6 +1440,9 @@ export const reactToPost = asyncHandelr(async (req, res) => {
         data: { type }
     });
 });
+
+
+
 
 
 export const changeUserLanguage = asyncHandelr(async (req, res) => {
@@ -1984,6 +2055,63 @@ export const replyToComment = asyncHandelr(async (req, res) => {
 });
 
 
+
+
+// export const reactToComment = asyncHandelr(async (req, res) => {
+//     const { type } = req.body;
+//     const { commentId } = req.params;
+
+//     if (!["like", "love", "sad", "angry"].includes(type)) {
+//         return res.status(400).json({ message: "❌ نوع الـ reaction غير صالح" });
+//     }
+
+//     const comment = await Commenttt.findById(commentId);
+//     if (!comment) {
+//         return res.status(404).json({ message: "❌ الكومنت غير موجود" });
+//     }
+
+//     // البحث عن reaction موجود من نفس المستخدم ونفس النوع
+//     const existingReactionIndex = comment.reactions.findIndex(
+//         r => r.user.toString() === req.user._id.toString() && r.type === type
+//     );
+
+//     // لو موجود → إلغاء الـ reaction
+//     if (existingReactionIndex !== -1) {
+//         comment.reactions.splice(existingReactionIndex, 1);
+//         await comment.save();
+//         return res.json({
+//             message: "❌ تم إلغاء الـ reaction",
+//             data: { type }
+//         });
+//     }
+
+//     // إزالة أي reaction قديم من نفس المستخدم (عشان يغير النوع فقط)
+//     comment.reactions = comment.reactions.filter(
+//         r => r.user.toString() !== req.user._id.toString()
+//     );
+
+//     // إضافة الـ reaction الجديد
+//     comment.reactions.push({
+//         user: req.user._id,
+//         type
+//     });
+
+//     await comment.save();
+
+//     res.json({
+//         message: `✅ تم إضافة ${type} بنجاح`,
+//         data: { type }
+//     });
+// });
+
+
+
+
+
+
+
+
+
 export const reactToComment = asyncHandelr(async (req, res) => {
     const { type } = req.body;
     const { commentId } = req.params;
@@ -1992,7 +2120,12 @@ export const reactToComment = asyncHandelr(async (req, res) => {
         return res.status(400).json({ message: "❌ نوع الـ reaction غير صالح" });
     }
 
-    const comment = await Commenttt.findById(commentId);
+    const comment = await Commenttt.findById(commentId)
+        .populate({
+            path: 'user',
+            select: 'fcmToken lang username'
+        });
+
     if (!comment) {
         return res.status(404).json({ message: "❌ الكومنت غير موجود" });
     }
@@ -2002,22 +2135,23 @@ export const reactToComment = asyncHandelr(async (req, res) => {
         r => r.user.toString() === req.user._id.toString() && r.type === type
     );
 
-    // لو موجود → إلغاء الـ reaction
+    let action = "added";
+
     if (existingReactionIndex !== -1) {
         comment.reactions.splice(existingReactionIndex, 1);
+        action = "removed";
         await comment.save();
+
         return res.json({
             message: "❌ تم إلغاء الـ reaction",
             data: { type }
         });
     }
 
-    // إزالة أي reaction قديم من نفس المستخدم (عشان يغير النوع فقط)
     comment.reactions = comment.reactions.filter(
         r => r.user.toString() !== req.user._id.toString()
     );
 
-    // إضافة الـ reaction الجديد
     comment.reactions.push({
         user: req.user._id,
         type
@@ -2025,18 +2159,92 @@ export const reactToComment = asyncHandelr(async (req, res) => {
 
     await comment.save();
 
+    // ✅ إرسال إشعار + تخزينه (فقط لما يضيف reaction جديد)
+    if (action === "added" && comment.user._id.toString() !== req.user._id.toString()) {
+        const userLang = comment.user.lang || "ar";
+
+        const titles = {
+            ar: "👍 تفاعل جديد على تعليقك!",
+            en: "👍 New reaction on your comment!"
+        };
+
+        const reactionWords = {
+            like: { ar: "إعجاب", en: "like" },
+            love: { ar: "حب", en: "love" },
+            sad: { ar: "حزن", en: "sad" },
+            angry: { ar: "غضب", en: "angry" }
+        };
+
+        const bodies = {
+            ar: `${req.user.username || "شخص ما"} قام بـ ${reactionWords[type].ar} على تعليقك`,
+            en: `${req.user.username || "Someone"} ${reactionWords[type].en}d your comment`
+        };
+
+        const title = titles[userLang];
+        const body = bodies[userLang];
+
+        // ✅ تخزين الإشعار أولاً (دايمًا، حتى لو التوكن باطل)
+        try {
+            await NotificationModell.create({
+                userId: comment.user._id,
+                postId: comment.postId || null, // لو عندك postId في الكومنت
+                commentId: comment._id,
+                title: {
+                    ar: titles.ar,
+                    en: titles.en
+                },
+                body: {
+                    ar: bodies.ar,
+                    en: bodies.en
+                },
+                type: "comment_reaction",
+                deviceToken: comment.user.fcmToken || null,
+                data: {
+                    commentId: comment._id.toString(),
+                    reactorUsername: req.user.username || "Someone"
+                }
+            });
+
+            console.log(`✅ تم تخزين إشعار reaction على تعليق للمستخدم ${comment.user._id}`);
+        } catch (storeError) {
+            console.error("❌ فشل تخزين الإشعار في الداتابيز:", storeError.message);
+        }
+
+        // ✅ محاولة إرسال الإشعار (لو في توكن)
+        if (comment.user.fcmToken) {
+            try {
+                await admin.messaging().send({
+                    notification: { title, body },
+                    data: {
+                        commentId: comment._id.toString(),
+                        type: "comment_reaction"
+                    },
+                    token: comment.user.fcmToken,
+                });
+
+                console.log(`✅ تم إرسال إشعار reaction على تعليق (${userLang})`);
+            } catch (sendError) {
+                console.error("❌ فشل إرسال إشعار reaction على تعليق:", sendError.message);
+
+                if (sendError.message.includes("Requested entity was not found") ||
+                    sendError.message.includes("The registration token is not a valid FCM registration token")) {
+
+                    console.log(`🗑️ توكن FCM باطل، جاري حذفه من المستخدم ${comment.user._id}`);
+
+                    comment.user.fcmToken = null;
+                    await comment.user.save();
+                }
+            }
+        } else {
+            console.log(`⚠️ لا يوجد fcmToken للمستخدم ${comment.user._id}، الإشعار مخزن فقط`);
+        }
+    }
+
     res.json({
         message: `✅ تم إضافة ${type} بنجاح`,
         data: { type }
     });
 });
-
-
-
-
-
-
-
 
 
 

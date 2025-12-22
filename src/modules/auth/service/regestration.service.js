@@ -913,44 +913,87 @@ export const resetPassword = asyncHandelr(async (req, res, next) => {
 
 
 
-import cron from 'node-cron';
-// cron.schedule('0 * * * *', async () => {
-//     console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية...');
+// import cron from 'node-cron';
+// // cron.schedule('0 * * * *', async () => {
+// //     console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية...');
 
-//     // بعد دقيقة واحدة فقط من آخر تحديث (للاختبار)
+// //     // بعد دقيقة واحدة فقط من آخر تحديث (للاختبار)
+// //     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+
+// //     const result = await Usermodel.updateMany(
+// //         {
+// //             lastUsernameUpdate: { $lte: oneMinuteAgo },
+// //             username: { $ne: null }, // فقط اللي عندهم اسم حاليًا
+// //             role: "User" // فقط المستخدمين العاديين (مش Admin أو Owner)
+// //         },
+// //         {
+// //             $set: { username: null },
+// //             $unset: { lastUsernameUpdate: "" } // حذف التاريخ اختياري
+// //         }
+// //     );
+
+// //     console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين) عادي(ين)`);
+// // });
+
+
+
+
+// // للاختبار فقط: يشتغل كل دقيقة
+// cron.schedule('* * * * *', async () => {
+//     console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية... (وضع اختبار: كل دقيقة)');
+
+//     // بعد دقيقة واحدة فقط من آخر تحديث
 //     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
 
 //     const result = await Usermodel.updateMany(
 //         {
 //             lastUsernameUpdate: { $lte: oneMinuteAgo },
-//             username: { $ne: null }, // فقط اللي عندهم اسم حاليًا
-//             role: "User" // فقط المستخدمين العاديين (مش Admin أو Owner)
+//             username: { $ne: null },
+//             role: "User"
 //         },
 //         {
 //             $set: { username: null },
-//             $unset: { lastUsernameUpdate: "" } // حذف التاريخ اختياري
+//             $unset: { lastUsernameUpdate: "" }
 //         }
 //     );
 
-//     console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين) عادي(ين)`);
+//     console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين) عادي(ين) في وضع الاختبار`);
 // });
 
 
 
 
-// للاختبار فقط: يشتغل كل دقيقة
-cron.schedule('* * * * *', async () => {
+import cron from 'node-cron';
+
+cron.schedule('* * * * *', async () => { // ← كل دقيقة (للاختبار)
     console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية... (وضع اختبار: كل دقيقة)');
 
-    // بعد دقيقة واحدة فقط من آخر تحديث
+    // بعد دقيقة واحدة فقط من آخر تحديث (للاختبار)
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
 
+    // جلب المستخدمين اللي لازم يتمسح اسمهم
+    const usersToExpire = await Usermodel.find({
+        lastUsernameUpdate: { $lte: oneMinuteAgo },
+        username: { $ne: null },
+        role: "User"
+    }).select('_id');
+
+    if (usersToExpire.length === 0) {
+        console.log('📭 لا يوجد أسماء مستخدمين منتهية حاليًا');
+        return;
+    }
+
+    const userIds = usersToExpire.map(u => u._id);
+
+    // حذف البوستات والكومنتات أولاً
+    await Posttt.deleteMany({ user: { $in: userIds } });
+    await Commenttt.deleteMany({ user: { $in: userIds } });
+
+    console.log(`🗑️ تم حذف جميع البوستات والكومنتات لـ ${userIds.length} مستخدم(ين) منتهية الاسم`);
+
+    // بعد كده نحذف الاسم و lastUsernameUpdate
     const result = await Usermodel.updateMany(
-        {
-            lastUsernameUpdate: { $lte: oneMinuteAgo },
-            username: { $ne: null },
-            role: "User"
-        },
+        { _id: { $in: userIds } },
         {
             $set: { username: null },
             $unset: { lastUsernameUpdate: "" }
@@ -959,6 +1002,7 @@ cron.schedule('* * * * *', async () => {
 
     console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين) عادي(ين) في وضع الاختبار`);
 });
+
 
 
 export const updateUserProfile = asyncHandelr(async (req, res) => {

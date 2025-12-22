@@ -887,7 +887,7 @@ export const resetPassword = asyncHandelr(async (req, res, next) => {
 
 
 
-import cron from 'node-cron';
+
 
 // // تشغيل كل ساعة (في الدقيقة 0 من كل ساعة)
 // // cron.schedule('0 * * * *', async () => {
@@ -913,28 +913,52 @@ import cron from 'node-cron';
 
 
 
+import cron from 'node-cron';
+// cron.schedule('0 * * * *', async () => {
+//     console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية...');
 
-cron.schedule('0 * * * *', async () => {
-    console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية...');
+//     // بعد دقيقة واحدة فقط من آخر تحديث (للاختبار)
+//     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
 
-    // بعد دقيقة واحدة فقط من آخر تحديث (للاختبار)
+//     const result = await Usermodel.updateMany(
+//         {
+//             lastUsernameUpdate: { $lte: oneMinuteAgo },
+//             username: { $ne: null }, // فقط اللي عندهم اسم حاليًا
+//             role: "User" // فقط المستخدمين العاديين (مش Admin أو Owner)
+//         },
+//         {
+//             $set: { username: null },
+//             $unset: { lastUsernameUpdate: "" } // حذف التاريخ اختياري
+//         }
+//     );
+
+//     console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين) عادي(ين)`);
+// });
+
+
+
+
+// للاختبار فقط: يشتغل كل دقيقة
+cron.schedule('* * * * *', async () => {
+    console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية... (وضع اختبار: كل دقيقة)');
+
+    // بعد دقيقة واحدة فقط من آخر تحديث
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
 
     const result = await Usermodel.updateMany(
         {
             lastUsernameUpdate: { $lte: oneMinuteAgo },
-            username: { $ne: null }, // فقط اللي عندهم اسم حاليًا
-            role: "User" // فقط المستخدمين العاديين (مش Admin أو Owner)
+            username: { $ne: null },
+            role: "User"
         },
         {
             $set: { username: null },
-            $unset: { lastUsernameUpdate: "" } // حذف التاريخ اختياري
+            $unset: { lastUsernameUpdate: "" }
         }
     );
 
-    console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين) عادي(ين)`);
+    console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين) عادي(ين) في وضع الاختبار`);
 });
-
 
 
 export const updateUserProfile = asyncHandelr(async (req, res) => {

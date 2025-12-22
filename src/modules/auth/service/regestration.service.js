@@ -885,44 +885,44 @@ export const resetPassword = asyncHandelr(async (req, res, next) => {
 
 
 
-// import cron from 'node-cron';
-
-
-
-
-// cron.schedule('0 * * * *', async () => {
-//     console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية...');
-
-//     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-//     const result = await Usermodel.updateMany(
-//         {
-//             lastUsernameUpdate: { $lte: twentyFourHoursAgo },
-//             username: { $ne: null } // فقط اللي عندهم اسم حاليًا
-//         },
-//         {
-//             $set: { username: null },
-//             $unset: { lastUsernameUpdate: "" } // اختياري: حذف التاريخ
-//         }
-//     );
-
-//     console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين)`);
-// });
-
 
 
 import cron from 'node-cron';
 
-// تشغيل كل ساعة (في الدقيقة 0 من كل ساعة)
+// // تشغيل كل ساعة (في الدقيقة 0 من كل ساعة)
+// // cron.schedule('0 * * * *', async () => {
+// //     console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية...');
+
+// //     // بعد 24 ساعة كاملة من آخر تحديث
+// //     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+// //     const result = await Usermodel.updateMany(
+// //         {
+// //             lastUsernameUpdate: { $lte: twentyFourHoursAgo },
+// //             username: { $ne: null }, // فقط اللي عندهم اسم حاليًا
+// //             role: "User" // فقط المستخدمين العاديين (مش Admin أو Owner)
+// //         },
+// //         {
+// //             $set: { username: null },
+// //             $unset: { lastUsernameUpdate: "" } // حذف التاريخ اختياري
+// //         }
+// //     );
+
+//     console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين) عادي(ين)`);
+// });
+
+
+
+
 cron.schedule('0 * * * *', async () => {
     console.log('🔄 جاري التحقق من أسماء المستخدمين المنتهية...');
 
-    // بعد 24 ساعة كاملة من آخر تحديث
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // بعد دقيقة واحدة فقط من آخر تحديث (للاختبار)
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
 
     const result = await Usermodel.updateMany(
         {
-            lastUsernameUpdate: { $lte: twentyFourHoursAgo },
+            lastUsernameUpdate: { $lte: oneMinuteAgo },
             username: { $ne: null }, // فقط اللي عندهم اسم حاليًا
             role: "User" // فقط المستخدمين العاديين (مش Admin أو Owner)
         },
@@ -934,6 +934,8 @@ cron.schedule('0 * * * *', async () => {
 
     console.log(`🗑️ تم حذف اسم ${result.modifiedCount} مستخدم(ين) عادي(ين)`);
 });
+
+
 
 export const updateUserProfile = asyncHandelr(async (req, res) => {
     const { username, ImageId } = req.body;
@@ -990,66 +992,6 @@ export const updateUserProfile = asyncHandelr(async (req, res) => {
 
 
 
-// export const getUserProfile = asyncHandelr(async (req, res) => {
-//     const user = req.user; // يأتي من middleware protect
-
-//     if (!user) {
-//         return res.status(401).json({ message: "❌ غير مصرح لك" });
-//     }
-
-//     // حساب الوقت المتبقي للاسم (لو موجود)
-//     let usernameExpiryInfo = null;
-
-//     if (user.lastUsernameUpdate && user.username) {
-//         const lastUpdate = new Date(user.lastUsernameUpdate);
-//         const now = new Date();
-//         const hoursPassed = (now - lastUpdate) / (1000 * 60 * 60); // بالساعات
-//         const hoursLeft = 24 - hoursPassed;
-
-//         if (hoursLeft > 0) {
-//             const fullHours = Math.floor(hoursLeft);
-//             const minutes = Math.round((hoursLeft - fullHours) * 60);
-
-//             usernameExpiryInfo = {
-//                 lastUpdatedAt: user.lastUsernameUpdate,
-//                 expiresIn: `${fullHours} ساعة و ${minutes} دقيقة`,
-//                 hoursLeft: Math.round(hoursLeft * 100) / 100, // بدقة عشرية
-//                 status: "active"
-//             };
-//         } else {
-//             // لو مر أكثر من 24 ساعة
-//             usernameExpiryInfo = {
-//                 lastUpdatedAt: user.lastUsernameUpdate,
-//                 expiresIn: "انتهت الصلاحية",
-//                 hoursLeft: 0,
-//                 status: "expired"
-//             };
-//         }
-//     }
-
-//     // populate الصورة الكرتونية لو موجودة
-//     await user.populate({
-//         path: 'ImageId',
-//         select: 'image.secure_url image.public_id'
-//     });
-
-//     res.status(200).json({
-//         message: "✅ تم جلب بيانات الملف الشخصي بنجاح",
-//         profile: {
-//             _id: user._id,
-//             username: user.username || null,
-//             email: user.email,
-//             phone: user.phone,
-//             role: user.role,
-//             ImageId: user.ImageId,
-//             isOnline: user.isOnline,
-//             createdAt: user.createdAt,
-//             // معلومات الاسم المؤقت
-//             usernameExpiry: usernameExpiryInfo
-//         }
-//     });
-// });
- 
 
 export const getUserProfile = asyncHandelr(async (req, res) => {
     const user = req.user; // يأتي من middleware protect
@@ -1112,6 +1054,11 @@ export const getUserProfile = asyncHandelr(async (req, res) => {
         profile: profileResponse
     });
 });
+
+
+
+
+
 
 export const createPost = asyncHandelr(async (req, res) => {
     const { text } = req.body;

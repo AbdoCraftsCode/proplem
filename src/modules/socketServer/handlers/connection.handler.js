@@ -6,14 +6,18 @@ import {
   markGroupForDeletion,
 } from "../socketIndex.js";
 
-export const handleDisconnection = (socket, reason) => {
+import { groupCounters } from "../socketIndex.js";
+import { updateGroupCounters } from "../utils/socket.helper.js";
+import { GroupModel } from "../../../DB/models/group.model.js";
+
+export const handleDisconnection = async (socket, reason) => {
   console.log(
     `User disconnected: ${socket.user?.username} (${socket.id}) - Reason: ${reason}`
   );
 
   const io = getIO();
 
-  checkAndUpdateGroupActivity(socket, io);
+  await checkAndUpdateGroupActivity(socket, io, socket.user._id);
 
   if (socket.user?._id) {
     const userSockets = connectedUsers.get(socket.user._id);
@@ -24,15 +28,20 @@ export const handleDisconnection = (socket, reason) => {
       }
     }
   }
+
+  userGroupActivity.delete(socket.id); // FIX: Added to clean up activity tracking on full disconnect
 };
 
-const checkAndUpdateGroupActivity = (socket, io) => {
+const checkAndUpdateGroupActivity = async (socket, io, userId) => {
   try {
     const userGroups = new Set();
 
-    const activity = userGroupActivity.get(socket.id);
-    if (activity) {
-      userGroups.add(activity.groupId);
+    const sessions = userGroupActivity.get(socket.id);
+
+    if (sessions) {
+      for (const groupId of sessions.keys()) {
+        userGroups.add(groupId);
+      }
     }
 
     if (socket.rooms) {
@@ -43,8 +52,23 @@ const checkAndUpdateGroupActivity = (socket, io) => {
         }
       });
     }
+    console.log(userGroups)
 
-    userGroups.forEach((groupId) => {
+    for (const groupId of userGroups) { // FIX: Changed from forEach(async ...) to for...of for proper await handling
+      const group = await GroupModel.findById(groupId);
+      if (!group) return; // FIX: Added to skip if group not found
+      const userRole = group.getUserRole(userId);
+      // groupId = groupId.toString(); // FIX: Removed unnecessary reassignment
+
+      ////////////////
+      updateGroupCounters(groupId, userRole, "leave");
+      io.emit("group-counters-updated", {
+        groupId,
+        activeUsers: groupCounters.get(groupId).active,
+        guests: groupCounters.get(groupId).guests,
+      });
+
+      /////////////////////
       const room = io.sockets.adapter.rooms.get(`group-${groupId}`);
 
       if (!room || room.size === 0) {
@@ -53,7 +77,7 @@ const checkAndUpdateGroupActivity = (socket, io) => {
           `Group ${groupId} marked for deletion (last user disconnected)`
         );
       }
-    });
+    }
   } catch (error) {
     console.error("Error checking group activity on disconnect:", error);
   }

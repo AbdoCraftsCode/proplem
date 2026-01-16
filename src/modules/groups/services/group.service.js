@@ -1,5 +1,7 @@
 import { asyncHandelr } from "../../../utlis/response/error.response.js";
 import { GroupModel } from "../../../DB/models/group.model.js";
+import { getIO } from "../../socketServer/socketIndex.js";
+import { groupCounters } from "../../socketServer/socketIndex.js";
 
 export const joinAsActive = asyncHandelr(async (req, res, next) => {
   const userId = req.user._id;
@@ -8,6 +10,14 @@ export const joinAsActive = asyncHandelr(async (req, res, next) => {
   try {
     const group = await checkCanJoinAsActive(groupId, userId);
     await group.addActiveUser(userId);
+
+    const io = getIO();
+    io.to(`group-${groupId}`).emit("user-become-active", {
+      userId: userId.toString(),
+      username: req.user.username || "Unknown",
+      groupId: groupId.toString(),
+      timestamp: new Date(),
+    });
 
     res.status(200).json({
       success: true,
@@ -24,35 +34,46 @@ export const joinAsActive = asyncHandelr(async (req, res, next) => {
   }
 });
 
-export const joinAsGuest = asyncHandelr(async (req, res, next) => {
+export const leaveActiveGroup = asyncHandelr(async (req, res, next) => {
   const userId = req.user._id;
-  const { groupId } = req.body;
-
-  try {
-    const group = await GroupModel.findById(groupId);
-    if (!group) {
-      return next(new Error("Group not found", { cause: 404 }));
-    }
-
-    if (group.isMember(userId)) {
-      return next(new Error("User is already in the group", { cause: 400 }));
-    }
-
-    await group.addGuest(userId);
-
-    res.status(200).json({
-      success: true,
-      message: "Successfully joined as guest",
-      data: {
-        groupId,
-        groupName: group.name,
-        guestsCount: group.guests.length,
-        joinedAt: new Date(),
-      },
-    });
-  } catch (error) {
-    return next(new Error(error.message, { cause: 400 }));
+  const { groupId } = req.body; // Assuming route is /groups/:groupId/leave-active or similar
+  console.log(groupId)
+  const group = await GroupModel.findById(groupId);
+  if (!group) {
+    return next(new Error("Group not found", { cause: 404 }));
   }
+
+  const userRole = group.getUserRole(userId);
+  if (userRole !== "active" && userRole !== "admin") {
+    return next(
+      new Error("You are not an active member of this group", { cause: 403 })
+    );
+  }
+
+  // If admin, perhaps don't allow leaving active, or handle specially (e.g., keep admin but remove from activeUsers)
+  if (userRole === "admin") {
+    return next(
+      new Error("You are admin you cant left group", { cause: 403 })
+    );
+  }
+
+  await group.removeUser(userId);
+  await group.save();
+
+  // Emit event to the group room
+  const io = getIO();
+  io.to(`group-${groupId}`).emit("user-left-group", {
+    userId: userId.toString(),
+    username: req.user.username || "Unknown",
+    groupId: groupId.toString(),
+    timestamp: new Date(),
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Successfully left active users in the group",
+    data: group,
+  });
 });
 
 export const createGroup = asyncHandelr(async (req, res, next) => {
@@ -67,6 +88,22 @@ export const createGroup = asyncHandelr(async (req, res, next) => {
     avatar,
   });
 
+  const io = getIO();
+  io.emit("group-created", {
+    success: true,
+    group: {
+      _id: group._id,
+      name: group.name,
+      description: group.description,
+      admin: group.admin,
+      activeUsersCount: group.activeUsers.length,
+      createdAt: group.createdAt,
+    },
+    activeUsers: 1,
+    guests: 0,
+    message: "New group created",
+  });
+
   res.status(201).json({
     success: true,
     message: "Group created successfully",
@@ -76,36 +113,42 @@ export const createGroup = asyncHandelr(async (req, res, next) => {
 
 export const getUserGroups = asyncHandelr(async (req, res, next) => {
   const userId = req.user._id;
-
-  const allGroups = await GroupModel.find({ isActive: true }).select("-messages");
-
+  const allGroups = await GroupModel.find({ isActive: true }).select(
+    "-messages"
+  );
   const sortedGroups = allGroups.sort((a, b) => {
     const aIsAdmin = a.admin.toString() === userId.toString();
     const bIsAdmin = b.admin.toString() === userId.toString();
-    
     if (aIsAdmin && !bIsAdmin) return -1;
     if (!aIsAdmin && bIsAdmin) return 1;
-    
     const aIsMember = a.isMember(userId);
     const bIsMember = b.isMember(userId);
-    
     if (aIsMember && !bIsMember) return -1;
     if (!aIsMember && bIsMember) return 1;
-    
     return 0;
   });
-
-  const formattedGroups = sortedGroups.map(group => ({
-    ...group.toObject(),
-    userRole: group.getUserRole(userId),
-    isMember: group.isMember(userId)
-  }));
-
+  const formattedGroups = sortedGroups.map((group) => {
+    const counters = groupCounters.get(group._id.toString()) || {
+      active: 0,
+      guests: 0,
+    };
+    return {
+      ...group.toObject(),
+      userRole: group.getUserRole(userId),
+      isMember: group.isMember(userId),
+      counter: {
+        active: counters.active,
+        guests: counters.guests,
+      },
+    };
+  });
   res.status(200).json({
     success: true,
     data: formattedGroups,
   });
 });
+
+
 
 export const getGroupMessages = asyncHandelr(async (req, res, next) => {
   const { groupId } = req.params;

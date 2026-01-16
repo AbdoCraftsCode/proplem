@@ -19,8 +19,8 @@ export const setupConnectionEvents = (io, socket) => {
     username: socket.user.username,
   });
 
-  socket.on("disconnect", (reason) => {
-    handleDisconnection(socket, reason);
+  socket.on("disconnect", async (reason) => {
+    await handleDisconnection(socket, reason);
   });
 
   socket.on("error", (error) => {

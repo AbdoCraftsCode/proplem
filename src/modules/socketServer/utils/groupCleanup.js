@@ -1,6 +1,8 @@
 import { GroupModel } from "../../../DB/models/group.model.js";
 import { groupLastActivity, userGroupActivity } from "../socketIndex.js";
-
+import { groupCounters } from "../socketIndex.js";
+import { updateGroupCounters } from "../utils/socket.helper.js";
+import { removeUserActivity } from "../socketIndex.js"; // FIX: Added import for removeUserActivity
 
 let cleanupIo = null;
 
@@ -22,13 +24,37 @@ const deleteInactiveGroups = async () => {
 
     for (const groupId of groupsToDelete) {
       try {
+        const group = await GroupModel.findById(groupId);
+        if (!group) {
+          groupLastActivity.delete(groupId);
+          continue;
+        }
+
+        // Collect all relevant user IDs (admin + active users) to notify
+        const membersToNotify = new Set();
+        membersToNotify.add(group.admin.toString());
+        group.activeUsers.forEach((activeUser) => {
+          membersToNotify.add(activeUser.user.toString());
+        });
+
+        // Delete the group
         await GroupModel.findByIdAndDelete(groupId);
         console.log(`Cleanup: Deleted inactive group: ${groupId}`);
 
+        // Emit to the group room (existing)
         cleanupIo.to(`group-${groupId}`).emit("group-deleted", {
           success: true,
           groupId,
           message: "Group has been deleted due to inactivity",
+        });
+
+        // Additionally, emit to each member's personal user-groups room
+        membersToNotify.forEach((memberId) => {
+          cleanupIo.to(`user-groups-${memberId}`).emit("group-deleted", {
+            success: true,
+            groupId,
+            message: "Group has been deleted due to inactivity",
+          });
         });
 
         groupLastActivity.delete(groupId);
@@ -52,17 +78,22 @@ const kickInactiveUsers = async () => {
     const THIRTY_MINUTES = 20 * 60 * 1000;
     const usersToKick = [];
 
-    for (const [socketId, activity] of userGroupActivity.entries()) {
-      const timeSinceLastMessage = now - new Date(activity.lastMessageSent);
+    for (const [socketId, groupSessions] of userGroupActivity.entries()) {
+      for (const [groupId, activity] of groupSessions.entries()) {
+        const timeSinceLastMessage = now - new Date(activity.lastMessageSent);
 
-      if (timeSinceLastMessage >= THIRTY_MINUTES) {
-        usersToKick.push({ socketId, ...activity });
+        if (timeSinceLastMessage >= THIRTY_MINUTES) {
+          usersToKick.push({
+            socketId,
+            groupId,
+            userId: activity.userId,
+          });
+        }
       }
     }
 
     for (const user of usersToKick) {
       try {
-
         const group = await GroupModel.findById(user.groupId);
 
         if (!group) {
@@ -107,12 +138,21 @@ const kickInactiveUsers = async () => {
           socket.emit("user-kicked", {
             success: false,
             groupId: user.groupId,
-            message: "You have been removed from the group due to inactivity",
+            message: "you have been kicked as a active user",
             reason: "inactivity",
             removedFromActiveUsers: true,
           });
 
           socket.leave(`group-${user.groupId}`);
+
+          ////////////////
+          updateGroupCounters(user.groupId, userRole, "leave");
+          cleanupIo.emit("group-counters-updated", {
+            groupId: group._id,
+            activeUsers: groupCounters.get(group._id).active,
+            guests: groupCounters.get(group._id).guests,
+          });
+          /////////////////////
 
           socket.to(`group-${user.groupId}`).emit("user-removed", {
             userId: user.userId,
@@ -142,7 +182,7 @@ const kickInactiveUsers = async () => {
           );
         }
 
-        userGroupActivity.delete(user.socketId);
+        removeUserActivity(user.socketId, user.groupId); // FIX: Changed from userGroupActivity.delete(user.socketId) to per-group removal
       } catch (error) {
         console.error(`Cleanup: Error kicking user ${user.userId}:`, error);
       }
@@ -168,7 +208,7 @@ export const startCleanupIntervals = (ioInstance) => {
   setInterval(() => {
     console.log("Cleanup: Running kickInactiveUsers check...");
     kickInactiveUsers();
-  },10 * 60 * 1000);
+  }, 10 * 60 * 1000);
 
   console.log("Cleanup: Group cleanup intervals started");
 };

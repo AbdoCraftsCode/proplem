@@ -6,9 +6,9 @@ import {
 import {
   createGroup,
   joinAsActive,
-  joinAsGuest,
   getUserGroups,
   getGroupMessages,
+  leaveActiveGroup
 } from "./services/group.service.js";
 
 import {uploadVoice} from "./services/voice.service.js"
@@ -20,9 +20,9 @@ router.use(authentication());
 
 router.post("/create", createGroup);
 router.post("/join-active", joinAsActive);
-router.post("/join-guest", joinAsGuest);
 router.get("/my-groups", getUserGroups);
 router.get("/:groupId", getGroupMessages);
+router.post("/leave-active", leaveActiveGroup);
 
 const voiceUploadMiddleware = uploadCloudFile([
   ...fileValidationTypes.audio 

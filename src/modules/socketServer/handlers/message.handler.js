@@ -84,7 +84,7 @@ export const handleSendGroupMessage = async (io, socket, data) => {
 
     console.log(`Message saved to group ${groupId}:`, messageWithSender._id);
 
-    updateUserLastMessage(socket.id);
+    updateUserLastMessage(socket.id,group._id);
 
     io.to(`group-${groupId}`).emit("new-group-message", {
       success: true,

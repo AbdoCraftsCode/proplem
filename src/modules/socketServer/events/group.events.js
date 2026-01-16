@@ -1,7 +1,7 @@
-import { 
-  handleJoinGroup, 
-  handleLeaveGroup, 
-  handleTyping 
+import {
+  handleJoinGroup,
+  handleLeaveGroup,
+  handleTyping,
 } from "../handlers/group.handler.js";
 
 export const setupGroupEvents = (io, socket) => {
@@ -9,8 +9,8 @@ export const setupGroupEvents = (io, socket) => {
     await handleJoinGroup(io, socket, data);
   });
 
-  socket.on("leave-group", (data) => {
-    handleLeaveGroup(io, socket, data);
+  socket.on("leave-group", async (data) => {
+    await handleLeaveGroup(io, socket, data);
   });
 
   socket.on("typing", (data) => {

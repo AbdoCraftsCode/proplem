@@ -9,6 +9,7 @@ import usercontroller from "./modules/user/user.controller.js"
 import chatcontroller from "./modules/chat/chat.controller.js"
 // import categorycontroller from "./modules/product/catewgory.controller.js"
 import productiontroller from "./modules/production/production.controller.js"
+import groupcontroller from "./modules/groups/group.controller.js"
 import cors from 'cors';
 
 
@@ -24,6 +25,7 @@ export const bootstap = (app , express) => {
     // app.use("/admin", admincontroller)
     app.use("/chat", chatcontroller)
     app.use("/product", productiontroller)
+    app.use("/groups", groupcontroller);
     app.use(globalerror)
 
 }

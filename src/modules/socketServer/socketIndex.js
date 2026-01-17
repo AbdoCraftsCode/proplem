@@ -51,16 +51,30 @@ export const markGroupForDeletion = (groupId) => {
     deletionScheduled: new Date(Date.now() + 60 * 60 * 1000),
   });
 };
-export const trackUserActivity = (socketId, userId, groupId) => {
+export const trackUserActivity = (
+  socketId,
+  userId,
+  groupId,
+  userRole,
+  flag = true
+) => {
   if (!userGroupActivity.has(socketId)) {
     userGroupActivity.set(socketId, new Map());
   }
+
   const userSessions = userGroupActivity.get(socketId);
+
+  for (const [existingGroupId, activity] of userSessions.entries()) {
+    activity.flag = false;
+  }
+
   userSessions.set(groupId, {
     userId,
     groupId,
+    userRole,
     lastActive: new Date(),
     lastMessageSent: new Date(),
+    flag,
   });
 };
 export const updateUserLastActive = (socketId, groupId) => {

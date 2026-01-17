@@ -28,55 +28,68 @@ export const handleDisconnection = async (socket, reason) => {
       }
     }
   }
-
-  userGroupActivity.delete(socket.id); // FIX: Added to clean up activity tracking on full disconnect
 };
 
 const checkAndUpdateGroupActivity = async (socket, io, userId) => {
   try {
-    const userGroups = new Set();
-
     const sessions = userGroupActivity.get(socket.id);
+    if (!sessions || sessions.size === 0) {
+      return;
+    }
 
-    if (sessions) {
-      for (const groupId of sessions.keys()) {
-        userGroups.add(groupId);
+    let lastGroupId = null;
+    let lastActivity = null;
+
+    for (const [groupId, activity] of sessions.entries()) {
+      if (activity.flag === true) {
+        lastGroupId = groupId;
+        lastActivity = activity;
+        break;
       }
     }
 
-    if (socket.rooms) {
-      socket.rooms.forEach((room) => {
-        if (room.startsWith("group-")) {
-          const groupId = room.replace("group-", "");
-          userGroups.add(groupId);
+    if (!lastGroupId) {
+      let newestDate = new Date(0);
+      for (const [groupId, activity] of sessions.entries()) {
+        if (activity.lastActive > newestDate) {
+          newestDate = activity.lastActive;
+          lastGroupId = groupId;
+          lastActivity = activity;
         }
-      });
-    }
-    console.log(userGroups)
-
-    for (const groupId of userGroups) { // FIX: Changed from forEach(async ...) to for...of for proper await handling
-      const group = await GroupModel.findById(groupId);
-      if (!group) return; // FIX: Added to skip if group not found
-      const userRole = group.getUserRole(userId);
-      // groupId = groupId.toString(); // FIX: Removed unnecessary reassignment
-
-      ////////////////
-      updateGroupCounters(groupId, userRole, "leave");
-      io.emit("group-counters-updated", {
-        groupId,
-        activeUsers: groupCounters.get(groupId).active,
-        guests: groupCounters.get(groupId).guests,
-      });
-
-      /////////////////////
-      const room = io.sockets.adapter.rooms.get(`group-${groupId}`);
-
-      if (!room || room.size === 0) {
-        markGroupForDeletion(groupId);
-        console.log(
-          `Group ${groupId} marked for deletion (last user disconnected)`
-        );
       }
+    }
+
+    if (!lastGroupId) {
+      console.log(`No last group found for disconnecting socket ${socket.id}`);
+      return;
+    }
+
+    console.log(
+      `Disconnecting user ${socket.user?.username} from last group: ${lastGroupId}`
+    );
+
+    const group = await GroupModel.findById(lastGroupId);
+    if (!group) {
+      console.log(`Group ${lastGroupId} not found during disconnect cleanup`);
+      return;
+    }
+
+    const userRole = group.getUserRole(userId);
+
+    updateGroupCounters(lastGroupId, userRole, "leave");
+
+    io.emit("group-counters-updated", {
+      groupId: lastGroupId,
+      activeUsers: groupCounters.get(lastGroupId)?.active || 0,
+      guests: groupCounters.get(lastGroupId)?.guests || 0,
+    });
+
+    const room = io.sockets.adapter.rooms.get(`group-${lastGroupId}`);
+    if (!room || room.size === 0) {
+      markGroupForDeletion(lastGroupId);
+      console.log(
+        `Group ${lastGroupId} marked for deletion (last user disconnected)`
+      );
     }
   } catch (error) {
     console.error("Error checking group activity on disconnect:", error);

@@ -6,7 +6,7 @@ import {
   markGroupForDeletion,
   trackUserActivity,
   updateUserLastActive,
-  removeUserActivity, // FIX: Added import if not already present
+  removeUserActivity,
 } from "../socketIndex.js";
 
 export const handleJoinGroup = async (io, socket, data) => {
@@ -30,9 +30,15 @@ export const handleJoinGroup = async (io, socket, data) => {
 
     socket.join(`group-${groupId}`);
 
-    trackUserActivity(socket.id, socket.user._id, groupId); // FIX: Moved here to track all users (including guests)
-
     const userRole = group.getUserRole(socket.user._id);
+
+    trackUserActivity(
+      socket.id,
+      socket.user._id,
+      groupId,
+      userRole,
+      true
+    );
 
     ////////////////
     updateGroupCounters(groupId, userRole, "join");
@@ -42,7 +48,7 @@ export const handleJoinGroup = async (io, socket, data) => {
       guests: groupCounters.get(groupId).guests,
     });
     /////////////////////
-    console.log(groupCounters)
+    console.log(groupCounters);
 
     socket.emit("group-joined", {
       success: true,
@@ -73,7 +79,7 @@ export const handleJoinGroup = async (io, socket, data) => {
   }
 };
 
-export const handleLeaveGroup =async (io, socket, data) => {
+export const handleLeaveGroup = async (io, socket, data) => {
   const groupId = data;
 
   socket.to(`group-${groupId}`).emit("user-leaved-group", {
@@ -116,7 +122,7 @@ export const handleLeaveGroup =async (io, socket, data) => {
 export const handleTyping = (io, socket, data) => {
   const { groupId, isTyping } = data;
 
-  updateUserLastActive(socket.id , groupId);
+  updateUserLastActive(socket.id, groupId);
 
   socket.to(`group-${groupId}`).emit("user-typing", {
     userId: socket.user._id,

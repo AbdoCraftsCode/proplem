@@ -78,113 +78,153 @@ const kickInactiveUsers = async () => {
     const THIRTY_MINUTES = 20 * 60 * 1000;
     const usersToKick = [];
 
+    // Step 1: Collect candidates and clean guests/admins
     for (const [socketId, groupSessions] of userGroupActivity.entries()) {
-      for (const [groupId, activity] of groupSessions.entries()) {
-        const timeSinceLastMessage = now - new Date(activity.lastMessageSent);
+      const socket = cleanupIo.sockets.sockets.get(socketId);
+      const isOnline = !!socket;
 
-        if (timeSinceLastMessage >= THIRTY_MINUTES) {
-          usersToKick.push({
-            socketId,
-            groupId,
-            userId: activity.userId,
-          });
-        }
-      }
-    }
-
-    for (const user of usersToKick) {
-      try {
-        const group = await GroupModel.findById(user.groupId);
-
+      for (const [groupId, activity] of [...groupSessions.entries()]) {
+        // copy to avoid mutation issues
+        const group = await GroupModel.findById(groupId);
         if (!group) {
-          console.log(
-            `Cleanup: Group ${user.groupId} not found, skipping user ${user.userId}`
-          );
-          userGroupActivity.delete(user.socketId);
+          removeUserActivity(socketId, groupId);
           continue;
         }
 
-        const userRole = group.getUserRole(user.userId);
+        const userRole = group.getUserRole(activity.userId);
+
+        if (userRole === "guest") {
+          // Guests: never kick, but clean old (flag=false) activities
+          if (activity.flag === false) {
+            console.log(
+              `Cleanup: Removing stale guest activity for user ${activity.userId} in group ${groupId}`
+            );
+            removeUserActivity(socketId, groupId);
+          }
+          // Keep flag=true even if old lastMessageSent
+          continue;
+        }
 
         if (userRole === "admin") {
-          console.log(
-            `Cleanup: User ${user.userId} is admin of group ${user.groupId}, skipping kick`
-          );
-          const activity = userGroupActivity.get(user.socketId);
-          if (activity) {
+          // Admins: never kick, reset timer, keep flag=true activity
+          if (activity.flag === true) {
             activity.lastMessageSent = new Date();
             activity.lastActive = new Date();
+            console.log(
+              `Admin ${activity.userId} activity refreshed in group ${groupId}`
+            );
+          } else {
+            // Optional: remove old admin activities if you don't want them
+            removeUserActivity(socketId, groupId);
           }
           continue;
         }
 
-        if (userRole !== "active") {
-          console.log(
-            `Cleanup: User ${user.userId} is not an active user in group ${user.groupId} (role: ${userRole}), skipping`
-          );
-          userGroupActivity.delete(user.socketId);
+        if (userRole === "active") {
+          const timeSinceLastMessage = now - new Date(activity.lastMessageSent);
+
+          if (timeSinceLastMessage >= THIRTY_MINUTES) {
+            // Only collect active users who are inactive
+            usersToKick.push({
+              socketId,
+              groupId,
+              userId: activity.userId,
+              isOnline,
+            });
+          }
+          // We don't remove here — only after successful kick
+        }
+      }
+    }
+
+    // Step 2: Kick inactive active users
+    for (const user of usersToKick) {
+      try {
+        const group = await GroupModel.findById(user.groupId);
+        if (!group) {
+          removeUserActivity(user.socketId, user.groupId);
           continue;
         }
 
+        // Double-check role (in case changed)
+        const userRole = group.getUserRole(user.userId);
+        if (userRole !== "active") continue;
+
+        // Remove from active users in DB
         await group.removeUser(user.userId);
+        await group.save();
 
         console.log(
-          `Cleanup: Removed user ${user.userId} from active users in group ${user.groupId}`
+          `Cleanup: Removed inactive active user ${user.userId} from group ${user.groupId}`
         );
 
-        const socket = cleanupIo.sockets.sockets.get(user.socketId);
+        // Update counters
+        updateGroupCounters(user.groupId, userRole, "leave");
+        cleanupIo.emit("group-counters-updated", {
+          groupId: group._id,
+          activeUsers: groupCounters.get(group._id)?.active || 0,
+          guests: groupCounters.get(group._id)?.guests || 0,
+        });
 
-        if (socket) {
-          socket.emit("user-kicked", {
-            success: false,
-            groupId: user.groupId,
-            message: "you have been kicked as a active user",
-            reason: "inactivity",
-            removedFromActiveUsers: true,
-          });
+        // Notify
+        const eventPayload = {
+          userId: user.userId,
+          groupId: user.groupId,
+          reason: "inactivity",
+          removedFromActiveUsers: true,
+          timestamp: new Date(),
+          activeUsersCount: group.activeUsers.length,
+        };
 
-          socket.leave(`group-${user.groupId}`);
+        if (user.isOnline) {
+          const socket = cleanupIo.sockets.sockets.get(user.socketId);
+          if (socket) {
+            socket.emit("user-kicked", {
+              success: false,
+              groupId: user.groupId,
+              message: "you have been kicked as a active user",
+              reason: "inactivity",
+              removedFromActiveUsers: true,
+            });
 
-          ////////////////
-          updateGroupCounters(user.groupId, userRole, "leave");
-          cleanupIo.emit("group-counters-updated", {
-            groupId: group._id,
-            activeUsers: groupCounters.get(group._id).active,
-            guests: groupCounters.get(group._id).guests,
-          });
-          /////////////////////
+            socket.leave(`group-${user.groupId}`);
 
-          socket.to(`group-${user.groupId}`).emit("user-removed", {
-            userId: user.userId,
-            username: socket.user?.username,
-            groupId: user.groupId,
-            reason: "inactivity",
-            removedFromActiveUsers: true,
-            timestamp: new Date(),
-            activeUsersCount: group.activeUsers.length,
-          });
+            socket.to(`group-${user.groupId}`).emit("user-removed", {
+              ...eventPayload,
+              username: socket.user?.username || "Unknown",
+            });
 
-          console.log(
-            `Cleanup: Kicked inactive user ${user.userId} from group ${user.groupId} and removed from active users`
-          );
+            console.log(
+              `Kicked online inactive user ${user.userId} from ${user.groupId}`
+            );
+          }
         } else {
+          // Offline user
           cleanupIo.to(`group-${user.groupId}`).emit("user-removed", {
-            userId: user.userId,
-            groupId: user.groupId,
-            reason: "inactivity",
-            removedFromActiveUsers: true,
-            timestamp: new Date(),
-            activeUsersCount: group.activeUsers.length,
+            ...eventPayload,
+            username: "Offline User",
           });
 
           console.log(
-            `Cleanup: Removed inactive user ${user.userId} from active users in group ${user.groupId} (user offline)`
+            `Removed offline inactive user ${user.userId} from ${user.groupId}`
           );
         }
 
-        removeUserActivity(user.socketId, user.groupId); // FIX: Changed from userGroupActivity.delete(user.socketId) to per-group removal
+        // Remove this specific group activity
+        removeUserActivity(user.socketId, user.groupId);
+
+        // Step 3: Check if group is now empty
+        const room = cleanupIo.sockets.adapter.rooms.get(
+          `group-${user.groupId}`
+        );
+        if (!room || room.size === 0) {
+          markGroupForDeletion(user.groupId);
+          console.log(
+            `Group ${user.groupId} marked for deletion after kick (empty)`
+          );
+        }
       } catch (error) {
-        console.error(`Cleanup: Error kicking user ${user.userId}:`, error);
+        console.error(`Cleanup error kicking user ${user.userId}:`, error);
       }
     }
   } catch (error) {

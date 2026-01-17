@@ -92,6 +92,8 @@ export const handleSendGroupMessage = async (io, socket, data) => {
 
     updateUserLastMessage(socket.id, group._id);
 
+    const populatedUser = await socket.user.populate("ImageId");
+
     io.to(`group-${groupId}`).emit("new-group-message", {
       success: true,
       message: messageWithSender,
@@ -101,8 +103,9 @@ export const handleSendGroupMessage = async (io, socket, data) => {
         admin: group.admin,
       },
       fromUser: {
-        _id: socket.user._id,
-        username: socket.user.username,
+        _id: populatedUser._id,
+        username: populatedUser.username,
+        avatar: populatedUser.ImageId,
       },
     });
 

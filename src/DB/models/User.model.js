@@ -1,5 +1,3 @@
-
-
 // import mongoose, { Schema, Types, model } from "mongoose";
 
 // export const roletypes = { User: "User", Admin: "Admin", Owner:"Owner"}
@@ -39,15 +37,10 @@
 
 // );
 
-
-
-
 // const Usermodel = mongoose.model("User", userSchema);
 // export default Usermodel;
 // export const scketConnections = new Map()
 // export const onlineUsers = new Map();
-
-
 
 import mongoose, { Schema, Types, model } from "mongoose";
 import { Commenttt, Posttt } from "./reactionSchema.js";
@@ -55,11 +48,12 @@ import { Commenttt, Posttt } from "./reactionSchema.js";
 export const roletypes = { User: "User", Admin: "Admin", Owner: "Owner" };
 export const providerTypes = { system: "system", google: "google" };
 
-const userSchema = new Schema({
+const userSchema = new Schema(
+  {
     username: { type: String },
-    role: { type: String, default: 'User' },
-    email: { type: String, },
-    phone: { type: String,  sparse: true, trim: true },
+    role: { type: String, default: "User" },
+    email: { type: String },
+    phone: { type: String, sparse: true, trim: true },
 
     password: { type: String },
     isConfirmed: { type: Boolean, default: false },
@@ -70,29 +64,26 @@ const userSchema = new Schema({
     totalPoints: { type: Number, default: 0 },
     modelcar: { type: String, default: null },
     accountType: {
-        type: String,
-        enum: ['User', 'ServiceProvider', 'Owner', 'manager', 'staff','Admin'],
-        // required: true
+      type: String,
+      enum: ["User", "ServiceProvider", "Owner", "manager", "staff", "Admin"],
+      // required: true
     },
-
-
 
     serviceRef: {
-        type: mongoose.Schema.Types.ObjectId,
-        refPath: 'serviceTypeRef',
+      type: mongoose.Schema.Types.ObjectId,
+      refPath: "serviceTypeRef",
     },
 
-         ImageId: {
-                type: mongoose.Schema.Types.ObjectId,
-             ref: "CartoonImage",
-                default: null
-            },
+    ImageId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CartoonImage",
+      default: null,
+    },
 
- 
     fcmToken: { type: String, default: null },
     lang: { type: String, default: null },
 
-    isOnline: { type: Boolean , default: false },
+    isOnline: { type: Boolean, default: false },
     userId: String,
     // OTPs
     emailOTP: String,
@@ -101,44 +92,45 @@ const userSchema = new Schema({
     otpExpiresAt: Date,
     blockUntil: { type: Date },
     lastUsernameUpdate: {
-        type: Date,
-        default: null
+      type: Date,
+      default: null,
     },
 
     // 🎯 بيانات إضافية عامة لمقدمي الخدمة
-
-}, {
+  },
+  {
     timestamps: true,
     toJSON: { virtuals: true },
-    toObject: { virtuals: true }
-}); 
+    toObject: { virtuals: true },
+  }
+);
 userSchema.virtual("subscriptionDaysLeft").get(function () {
-    if (!this.subscription?.endDate) return null;
-    const diff = Math.ceil(
-        (this.subscription.endDate - new Date()) / (1000 * 60 * 60 * 24)
-    );
-    return diff > 0 ? diff : 0;
+  if (!this.subscription?.endDate) return null;
+  const diff = Math.ceil(
+    (this.subscription.endDate - new Date()) / (1000 * 60 * 60 * 24)
+  );
+  return diff > 0 ? diff : 0;
 });
 
 userSchema.virtual("subscriptionDaysUsed").get(function () {
-    if (!this.subscription?.startDate) return null;
-    const diff = Math.ceil(
-        (new Date() - this.subscription.startDate) / (1000 * 60 * 60 * 24)
-    );
-    return diff > 0 ? diff : 0;
+  if (!this.subscription?.startDate) return null;
+  const diff = Math.ceil(
+    (new Date() - this.subscription.startDate) / (1000 * 60 * 60 * 24)
+  );
+  return diff > 0 ? diff : 0;
 });
 
-userSchema.pre('save', async function (next) {
-    if (this.isModified('username') && this.username === null) {
-        try {
-            await Posttt.deleteMany({ user: this._id });
-            await Commenttt.deleteMany({ user: this._id }); // اختياري
-            console.log(`🗑️ تم حذف كل البوستات للمستخدم ${this._id} بعد حذف الاسم`);
-        } catch (error) {
-            console.error("خطأ في حذف البوستات:", error);
-        }
+userSchema.pre("save", async function (next) {
+  if (this.isModified("username") && this.username === null) {
+    try {
+      await Posttt.deleteMany({ user: this._id });
+      await Commenttt.deleteMany({ user: this._id }); // اختياري
+      console.log(`🗑️ تم حذف كل البوستات للمستخدم ${this._id} بعد حذف الاسم`);
+    } catch (error) {
+      console.error("خطأ في حذف البوستات:", error);
     }
-    next();
+  }
+  next();
 });
 const Usermodel = mongoose.model("User", userSchema);
 userSchema.index({ location: "2dsphere" });
@@ -147,13 +139,7 @@ export default Usermodel;
 export const scketConnections = new Map();
 export const onlineUsers = new Map();
 
-
-
-
-
 // eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5NDIwZjM3YTAzMGEwYzIzNzEyYjc0ZCIsImlhdCI6MTc2NTkzNjk1MSwiZXhwIjoxNzk3NDcyOTUxfQ.lF3R0fe2cGRIz4Y8UxxVs2p8LCjo9D7tHvTC5qcpuZ4
-
-
 
 // metr @DESKTOP-26VIBMK MINGW64 ~(master)
 // $ cd / c / Users / metr / Desktop / ecoomersse

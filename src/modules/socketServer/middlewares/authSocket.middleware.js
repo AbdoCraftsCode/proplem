@@ -21,11 +21,7 @@ export const authMiddleware = async (socket, next) => {
       next: mockNext,
     });
 
-    socket.user = {
-      _id: user._id.toString(),
-      username: user.username || user.name,
-      email: user.email,
-    };
+    socket.user = user;
 
     console.log(
       `User authenticated: ${socket.user.username} (${socket.user._id})`

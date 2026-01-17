@@ -32,20 +32,14 @@ export const handleJoinGroup = async (io, socket, data) => {
 
     const userRole = group.getUserRole(socket.user._id);
 
-    trackUserActivity(
-      socket.id,
-      socket.user._id,
-      groupId,
-      userRole,
-      true
-    );
+    trackUserActivity(socket.id, socket.user._id, groupId, userRole, true);
 
     ////////////////
     updateGroupCounters(groupId, userRole, "join");
     io.emit("group-counters-updated", {
       groupId: group._id,
-      activeUsers: groupCounters.get(groupId).active,
-      guests: groupCounters.get(groupId).guests,
+      activeUsers: groupCounters.get(groupId).active || 0,
+      guests: groupCounters.get(groupId).guests || 0,
     });
     /////////////////////
     console.log(groupCounters);
@@ -80,54 +74,70 @@ export const handleJoinGroup = async (io, socket, data) => {
 };
 
 export const handleLeaveGroup = async (io, socket, data) => {
-  const groupId = data;
+  try {
+    const groupId = data;
 
-  socket.to(`group-${groupId}`).emit("user-leaved-group", {
-    userId: socket.user._id,
-    username: socket.user.username,
-    timestamp: new Date(),
-  });
+    socket.to(`group-${groupId}`).emit("user-leaved-group", {
+      userId: socket.user._id,
+      username: socket.user.username,
+      timestamp: new Date(),
+    });
 
-  socket.leave(`group-${groupId}`);
+    socket.leave(`group-${groupId}`);
 
-  const group = await GroupModel.findById(groupId);
-  const userRole = group.getUserRole(socket.user._id);
+    const group = await GroupModel.findById(groupId);
+    const userRole = group.getUserRole(socket.user._id);
 
-  ////////////////
-  updateGroupCounters(groupId, userRole, "leave");
-  io.emit("group-counters-updated", {
-    groupId: group._id,
-    activeUsers: groupCounters.get(group._id).active,
-    guests: groupCounters.get(group._id).guests,
-  });
-  /////////////////////
+    ////////////////
+    updateGroupCounters(groupId, userRole, "leave");
+    io.emit("group-counters-updated", {
+      groupId: group._id,
+      activeUsers: groupCounters.get(group._id).active,
+      guests: groupCounters.get(group._id).guests,
+    });
+    /////////////////////
 
-  console.log(`User ${socket.user.username} left group ${groupId}`);
+    console.log(`User ${socket.user.username} left group ${groupId}`);
 
-  // FEATURE 1: Check if this was the last user in the group
-  const room = io.sockets.adapter.rooms.get(`group-${groupId}`);
-  if (!room || room.size === 0) {
-    markGroupForDeletion(groupId);
-    console.log(`Group ${groupId} marked for deletion (last user left)`);
+    // FEATURE 1: Check if this was the last user in the group
+    const room = io.sockets.adapter.rooms.get(`group-${groupId}`);
+    if (!room || room.size === 0) {
+      markGroupForDeletion(groupId);
+      console.log(`Group ${groupId} marked for deletion (last user left)`);
+    }
+
+    socket.emit("group-left", {
+      success: true,
+      groupId,
+    });
+  } catch (error) {
+    console.error("Error leaving group:", error);
+    socket.emit("leave-group-error", {
+      success: false,
+      message: "Failed to leave group",
+      error: error.message,
+    });
   }
-
-  removeUserActivity(socket.id, groupId); // FIX: Added for per-group cleanup on explicit leave
-
-  socket.emit("group-left", {
-    success: true,
-    groupId,
-  });
 };
 
 export const handleTyping = (io, socket, data) => {
-  const { groupId, isTyping } = data;
+  try {
+    const { groupId, isTyping } = data;
 
-  updateUserLastActive(socket.id, groupId);
+    updateUserLastActive(socket.id, groupId);
 
-  socket.to(`group-${groupId}`).emit("user-typing", {
-    userId: socket.user._id,
-    username: socket.user.username,
-    isTyping,
-    groupId,
-  });
+    socket.to(`group-${groupId}`).emit("user-typing", {
+      userId: socket.user._id,
+      username: socket.user.username,
+      isTyping,
+      groupId,
+    });
+  } catch (error) {
+    console.error("Error in handle typing :", error);
+    socket.emit("typing-error", {
+      success: false,
+      message: "typing error",
+      error: error.message,
+    });
+  }
 };

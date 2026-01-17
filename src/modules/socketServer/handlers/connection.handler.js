@@ -2,7 +2,6 @@ import {
   connectedUsers,
   userGroupActivity,
   getIO,
-  removeUserActivity,
   markGroupForDeletion,
 } from "../socketIndex.js";
 
@@ -11,22 +10,26 @@ import { updateGroupCounters } from "../utils/socket.helper.js";
 import { GroupModel } from "../../../DB/models/group.model.js";
 
 export const handleDisconnection = async (socket, reason) => {
-  console.log(
-    `User disconnected: ${socket.user?.username} (${socket.id}) - Reason: ${reason}`
-  );
+  try {
+    console.log(
+      `User disconnected: ${socket.user?.username} (${socket.id}) - Reason: ${reason}`
+    );
 
-  const io = getIO();
+    const io = getIO();
 
-  await checkAndUpdateGroupActivity(socket, io, socket.user._id);
+    await checkAndUpdateGroupActivity(socket, io, socket.user._id);
 
-  if (socket.user?._id) {
-    const userSockets = connectedUsers.get(socket.user._id);
-    if (userSockets) {
-      userSockets.delete(socket.id);
-      if (userSockets.size === 0) {
-        connectedUsers.delete(socket.user._id);
+    if (socket.user?._id) {
+      const userSockets = connectedUsers.get(socket.user._id);
+      if (userSockets) {
+        userSockets.delete(socket.id);
+        if (userSockets.size === 0) {
+          connectedUsers.delete(socket.user._id);
+        }
       }
     }
+  } catch (error) {
+    console.error("Error handle disconnection:", error);
   }
 };
 
@@ -94,8 +97,4 @@ const checkAndUpdateGroupActivity = async (socket, io, userId) => {
   } catch (error) {
     console.error("Error checking group activity on disconnect:", error);
   }
-};
-
-export const handleError = (socket, error) => {
-  console.error(`Socket error for user ${socket.user?.username}:`, error);
 };

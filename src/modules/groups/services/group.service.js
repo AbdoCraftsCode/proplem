@@ -30,7 +30,7 @@ export const joinAsActive = asyncHandelr(async (req, res, next) => {
       },
     });
   } catch (error) {
-    return next(new Error(error.message, { cause: 400 }));
+    return next(new Error(error.message, 400));
   }
 });
 

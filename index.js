@@ -12,17 +12,30 @@ const app = express()
 const port = process.env.PORT||3000
 
 const server = http.createServer(app);
-const io = initializeSocket(server);
+
 
 console.log("Email:", process.env.EMAIL);
 console.log("Password exists?", !!process.env.EMAIL_PASSWORD);
 bootstap(app ,express)
 
+const io = initializeSocket(server);
+
+process.on('unhandledRejection', (reason, promise) => {
+    throw Error(error.message.toString(), { cause: 403 })
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    throw Error(error.message.toString(), { cause: 403 })
+    process.exit(1);
+});
 
 
 server.listen(port, () => {
   console.log(`🚀 Server is running on port ${port} mr abdo welcome`);
   console.log(`📡 Socket.io server initialized`);
 });
+
+
 
 

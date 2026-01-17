@@ -114,7 +114,6 @@ const kickInactiveUsers = async () => {
               `Admin ${activity.userId} activity refreshed in group ${groupId}`
             );
           } else {
-            // Optional: remove old admin activities if you don't want them
             removeUserActivity(socketId, groupId);
           }
           continue;

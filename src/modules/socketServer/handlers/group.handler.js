@@ -6,7 +6,7 @@ import {
   markGroupForDeletion,
   trackUserActivity,
   updateUserLastActive,
-  removeUserActivity,
+  updateFlag,
 } from "../socketIndex.js";
 
 import {checkUserName} from "../utils/checkUsername.js"
@@ -18,7 +18,7 @@ export const handleJoinGroup = async (io, socket, data) => {
     if (!checkUserName(socket.user)) {
       socket.emit("join-group-error", {
         success: false,
-        message: "you have to change your nick name",
+        message: "user expired",
       });
       return;
     }
@@ -85,7 +85,11 @@ export const handleJoinGroup = async (io, socket, data) => {
 
 export const handleLeaveGroup = async (io, socket, data) => {
   try {
-    const groupId = data;
+    const {groupId} = data;
+
+    
+
+    socket.leave(`group-${groupId}`);
 
     socket.to(`group-${groupId}`).emit("user-leaved-group", {
       userId: socket.user._id,
@@ -93,23 +97,21 @@ export const handleLeaveGroup = async (io, socket, data) => {
       timestamp: new Date(),
     });
 
-    socket.leave(`group-${groupId}`);
-
     const group = await GroupModel.findById(groupId);
     const userRole = group.getUserRole(socket.user._id);
-
+    updateFlag(socket.id)
     ////////////////
     updateGroupCounters(groupId, userRole, "leave");
     io.emit("group-counters-updated", {
       groupId: group._id,
-      activeUsers: groupCounters.get(group._id).active,
-      guests: groupCounters.get(group._id).guests,
+      activeUsers: groupCounters.get(groupId).active || 0,
+      guests: groupCounters.get(groupId).guests || 0,
     });
     /////////////////////
-
+    
     console.log(`User ${socket.user.username} left group ${groupId}`);
 
-    // FEATURE 1: Check if this was the last user in the group
+
     const room = io.sockets.adapter.rooms.get(`group-${groupId}`);
     if (!room || room.size === 0) {
       markGroupForDeletion(groupId);

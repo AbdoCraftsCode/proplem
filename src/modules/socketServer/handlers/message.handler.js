@@ -7,7 +7,7 @@ export const handleSendGroupMessage = async (io, socket, data) => {
     if (!checkUserName(socket.user)) {
       socket.emit("message-error", {
         success: false,
-        message: "you have to change your nick name",
+        message: "user expired",
       });
       return;
     }

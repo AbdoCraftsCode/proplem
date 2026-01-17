@@ -52,17 +52,6 @@ const checkAndUpdateGroupActivity = async (socket, io, userId) => {
     }
 
     if (!lastGroupId) {
-      let newestDate = new Date(0);
-      for (const [groupId, activity] of sessions.entries()) {
-        if (activity.lastActive > newestDate) {
-          newestDate = activity.lastActive;
-          lastGroupId = groupId;
-          lastActivity = activity;
-        }
-      }
-    }
-
-    if (!lastGroupId) {
       console.log(`No last group found for disconnecting socket ${socket.id}`);
       return;
     }

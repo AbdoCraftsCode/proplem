@@ -77,6 +77,16 @@ export const trackUserActivity = (
     flag,
   });
 };
+
+export const updateFlag = (socketId) => {
+  if (!userGroupActivity.has(socketId)) return;
+
+  const userSessions = userGroupActivity.get(socketId);
+
+  for (const activity of userSessions.values()) {
+    activity.flag = false;
+  }
+};
 export const updateUserLastActive = (socketId, groupId) => {
   const sessions = userGroupActivity.get(socketId);
   if (!sessions) return;

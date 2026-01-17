@@ -2,12 +2,15 @@ import { asyncHandelr } from "../../../utlis/response/error.response.js";
 import { GroupModel } from "../../../DB/models/group.model.js";
 import { getIO } from "../../socketServer/socketIndex.js";
 import { groupCounters } from "../../socketServer/socketIndex.js";
+import { checkUserName } from "../../socketServer/utils/checkUsername.js";
 
 export const joinAsActive = asyncHandelr(async (req, res, next) => {
   const userId = req.user._id;
   const { groupId } = req.body;
 
   try {
+    if (!checkUserName(req.user))
+      throw new Error("You have to change your nick name");
     const group = await checkCanJoinAsActive(groupId, userId);
     await group.addActiveUser(userId);
 
@@ -35,9 +38,11 @@ export const joinAsActive = asyncHandelr(async (req, res, next) => {
 });
 
 export const leaveActiveGroup = asyncHandelr(async (req, res, next) => {
+  if (!checkUserName(req.user))
+    throw new Error("You have to change your nick name");
   const userId = req.user._id;
   const { groupId } = req.body; // Assuming route is /groups/:groupId/leave-active or similar
-  console.log(groupId)
+
   const group = await GroupModel.findById(groupId);
   if (!group) {
     return next(new Error("Group not found", { cause: 404 }));
@@ -52,9 +57,7 @@ export const leaveActiveGroup = asyncHandelr(async (req, res, next) => {
 
   // If admin, perhaps don't allow leaving active, or handle specially (e.g., keep admin but remove from activeUsers)
   if (userRole === "admin") {
-    return next(
-      new Error("You are admin you cant left group", { cause: 403 })
-    );
+    return next(new Error("You are admin you cant left group", { cause: 403 }));
   }
 
   await group.removeUser(userId);
@@ -77,6 +80,8 @@ export const leaveActiveGroup = asyncHandelr(async (req, res, next) => {
 });
 
 export const createGroup = asyncHandelr(async (req, res, next) => {
+  if (!checkUserName(req.user))
+    throw new Error("You have to change your nick name");
   const userId = req.user._id;
   const { name, description, avatar } = req.body;
 
@@ -112,6 +117,8 @@ export const createGroup = asyncHandelr(async (req, res, next) => {
 });
 
 export const getUserGroups = asyncHandelr(async (req, res, next) => {
+  if (!checkUserName(req.user))
+    throw new Error("You have to change your nick name");
   const userId = req.user._id;
   const allGroups = await GroupModel.find({ isActive: true }).select(
     "-messages"
@@ -148,9 +155,9 @@ export const getUserGroups = asyncHandelr(async (req, res, next) => {
   });
 });
 
-
-
 export const getGroupMessages = asyncHandelr(async (req, res, next) => {
+  if (!checkUserName(req.user))
+    throw new Error("You have to change your nick name");
   const { groupId } = req.params;
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 20;
@@ -237,6 +244,8 @@ export const getGroupMessages = asyncHandelr(async (req, res, next) => {
 
 // Optional: Get single message by ID
 export const getMessageById = asyncHandelr(async (req, res, next) => {
+  if (!checkUserName(req.user))
+    throw new Error("You have to change your nick name");
   const userId = req.user._id;
   const { groupId, messageId } = req.params;
 
@@ -281,18 +290,22 @@ export const getMessageById = asyncHandelr(async (req, res, next) => {
 });
 
 export const checkCanJoinAsActive = async (groupId, userId) => {
-  const group = await GroupModel.findById(groupId);
-  if (!group) {
-    throw new Error("Group not found");
-  }
+  try {
+    const group = await GroupModel.findById(groupId);
+    if (!group) {
+      throw new Error("Group not found");
+    }
 
-  if (group.isMember(userId)) {
-    throw new Error("User is already a member");
-  }
+    if (group.isMember(userId)) {
+      throw new Error("User is already a member");
+    }
 
-  if (!group.hasActiveSpace()) {
-    throw new Error("Group is full. Maximum 5 active users allowed.");
-  }
+    if (!group.hasActiveSpace()) {
+      throw new Error("Group is full. Maximum 5 active users allowed.");
+    }
 
-  return group;
+    return group;
+  } catch (error) {
+    throw new Error(error.message);
+  }
 };

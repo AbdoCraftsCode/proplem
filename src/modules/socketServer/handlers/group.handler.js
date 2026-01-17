@@ -9,9 +9,19 @@ import {
   removeUserActivity,
 } from "../socketIndex.js";
 
+import {checkUserName} from "../utils/checkUsername.js"
+
 export const handleJoinGroup = async (io, socket, data) => {
   try {
     const { groupId } = data;
+
+    if (!checkUserName(socket.user)) {
+      socket.emit("join-group-error", {
+        success: false,
+        message: "you have to change your nick name",
+      });
+      return;
+    }
 
     console.log(
       `User ${socket.user.username} attempting to join group ${groupId}`

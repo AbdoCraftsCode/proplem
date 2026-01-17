@@ -1,8 +1,16 @@
 import { GroupModel } from "../../../DB/models/group.model.js";
 import { updateUserLastMessage } from "../socketIndex.js";
+import { checkUserName } from "../utils/checkUsername.js";
 
 export const handleSendGroupMessage = async (io, socket, data) => {
   try {
+    if (!checkUserName(socket.user)) {
+      socket.emit("message-error", {
+        success: false,
+        message: "you have to change your nick name",
+      });
+      return;
+    }
     const { groupId, content, image, voice, type = "text" } = data;
 
     console.log(
@@ -82,8 +90,7 @@ export const handleSendGroupMessage = async (io, socket, data) => {
       },
     };
 
-
-    updateUserLastMessage(socket.id,group._id);
+    updateUserLastMessage(socket.id, group._id);
 
     io.to(`group-${groupId}`).emit("new-group-message", {
       success: true,
@@ -112,8 +119,7 @@ export const handleSendGroupMessage = async (io, socket, data) => {
         _id: group._id,
         name: group.name,
         lastMessage: {
-          content:
-            content || (type === "image" ? "Image" : "Voice message"),
+          content: content || (type === "image" ? "Image" : "Voice message"),
           type,
           senderId: socket.user._id,
           senderName: socket.user.username,
